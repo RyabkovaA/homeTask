@@ -56,6 +56,26 @@ export interface TaskEvent {
   created_at: string
 }
 
+export interface TaskHistoryItem {
+  id: string
+  task_id: string
+  actor_id: string
+  occurrence_date: string
+  status: EventStatus
+  moved_to: string | null
+  note: string | null
+  created_at: string
+
+  task_title: string
+  task_priority: Priority
+  room_id: string | null
+  room_name: string | null
+  room_icon: string | null
+
+  actor_name: string
+  actor_color: string
+}
+
 export interface Advice {
   id: string
   title: string

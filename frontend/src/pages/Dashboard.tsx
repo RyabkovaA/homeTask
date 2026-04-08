@@ -27,7 +27,7 @@ export default function Dashboard() {
   const dateLabel = format(new Date(), 'd MMMM yyyy', { locale: ru })
 
   const { data: tasks = [], isLoading: tasksLoading } = useTasks()
-  const { data: events = [] } = useEvents(today, today)
+  const { data: events = [] } = useEvents({ fromDate: today, toDate: today }) 
   const { data: analytics } = useAnalytics(30)
   const { data: advice = [] } = useAdvice()
   const { data: rooms = [] } = useRooms()

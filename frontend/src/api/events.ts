@@ -1,5 +1,5 @@
 import client from './client'
-import type { TaskEvent, EventStatus } from '../types'
+import type { TaskEvent, EventStatus, TaskHistoryItem } from '../types'
 
 interface EventCreate {
   task_id: string
@@ -9,12 +9,23 @@ interface EventCreate {
   note?: string | null
 }
 
+interface EventListFilters {
+  fromDate?: string
+  toDate?: string
+  status?: EventStatus | ''
+  roomId?: string
+}
+
 export const eventsApi = {
-  list: (houseId: string, fromDate?: string, toDate?: string) => {
+  list: (houseId: string, filters?: EventListFilters) => {
     const params: Record<string, string> = {}
-    if (fromDate) params.from_date = fromDate
-    if (toDate) params.to_date = toDate
-    return client.get<TaskEvent[]>(`/houses/${houseId}/events`, { params }).then(r => r.data)
+
+    if (filters?.fromDate) params.from_date = filters.fromDate
+    if (filters?.toDate) params.to_date = filters.toDate
+    if (filters?.status) params.status = filters.status
+    if (filters?.roomId) params.room_id = filters.roomId
+
+    return client.get<TaskHistoryItem[]>(`/houses/${houseId}/events`, { params }).then(r => r.data)
   },
 
   create: (data: EventCreate) =>

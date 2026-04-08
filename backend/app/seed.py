@@ -1,11 +1,17 @@
 """
 Run: python -m app.seed
-Creates test users, house, rooms, tasks, and 30 days of event history.
+Seeds test users, house, rooms, tasks, advice and 30 days of event history.
+
+Important:
+- database schema must already be created via Alembic
+- run: alembic upgrade head
+- then: python -m app.seed
 """
 import asyncio
 import random
 from datetime import date, timedelta
-from app.core.database import AsyncSessionLocal, engine, Base
+from sqlalchemy import select
+from app.core.database import AsyncSessionLocal
 from app.core.security import hash_password
 from app.models.user import User
 from app.models.house import House
@@ -77,10 +83,14 @@ ADVICE_DATA = [
 
 
 async def seed():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
     async with AsyncSessionLocal() as db:
+        existing_user = await db.execute(
+            select(User).where(User.email == "andrey@home.ru")
+        )
+        if existing_user.scalar_one_or_none():
+            print("ℹ️ Seed skipped: demo data already exists")
+            return
+
         andrey = User(email="andrey@home.ru", name="Андрей", hashed_password=hash_password("password123"))
         maria = User(email="maria@home.ru", name="Мария", hashed_password=hash_password("password123"))
         db.add_all([andrey, maria])
@@ -157,7 +167,7 @@ async def seed():
 
         await db.commit()
         print("✅ Seed completed!")
-        print(f"   Login: andrey@home.ru / password123")
+        print("   Login: andrey@home.ru / password123")
         print(f"   House ID: {house.id}")
 
 

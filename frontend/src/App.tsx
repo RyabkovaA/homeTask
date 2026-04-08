@@ -10,6 +10,7 @@ import House from './pages/House'
 import HouseRoom from './pages/HouseRoom'
 import KnowledgeBase from './pages/KnowledgeBase'
 import KnowledgeRoom from './pages/KnowledgeRoom'
+import History from './pages/History'
 import Profile from './pages/Profile.tsx'
 import Login from './pages/Login'
 import type { ReactNode } from 'react'
@@ -38,6 +39,7 @@ export default function App() {
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Dashboard />} />
             <Route path="tasks" element={<Tasks />} />
+            <Route path="history" element={<History />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="house" element={<House />} />
             <Route path="house/room/:roomId" element={<HouseRoom />} />

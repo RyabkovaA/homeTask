@@ -1,11 +1,12 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Home, CheckSquare, BarChart2, Building2, BookOpen, LogOut } from 'lucide-react'
+import { Home, CheckSquare, BarChart2, Building2, BookOpen, LogOut, History } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 
 const NAV = [
   { to: '/', icon: Home, label: 'Главная' },
   { to: '/tasks', icon: CheckSquare, label: 'Задачи' },
+  { to: '/history', icon: History, label: 'История' },
   { to: '/analytics', icon: BarChart2, label: 'Аналитика' },
   { to: '/house', icon: Building2, label: 'Дом' },
   { to: '/knowledge', icon: BookOpen, label: 'База знаний' },
@@ -86,7 +87,7 @@ export default function Layout() {
         </div>
 
         <nav className="md:hidden fixed bottom-0 inset-x-0 bg-beige-50 border-t border-beige-200 flex justify-around py-2 z-20">
-          {NAV.slice(0, 4).map(({ to, icon: Icon, label }) => (
+          {NAV.slice(0, 5).map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
