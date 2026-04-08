@@ -1,37 +1,88 @@
 import { useState, useMemo } from 'react'
-import { Plus, Search, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Check, ArrowRight } from 'lucide-react'
 import { useTasks, useDeleteTask } from '../hooks/useTasks'
 import { useRooms } from '../hooks/useRooms'
 import { useMembers } from '../hooks/useMembers'
+import { useCreateEvent, useEvents } from '../hooks/useEvents'
 import { TaskForm } from '../components/TaskForm'
 import { Badge } from '../components/ui/Badge'
-import { Button } from '../components/ui/Button'
 import { Spinner } from '../components/ui/Spinner'
 import type { Task, Priority } from '../types'
 import toast from 'react-hot-toast'
+import { format } from 'date-fns'
+import { ru } from 'date-fns/locale'
+import {
+  getDueTaskEntries,
+  getOccurrenceStatusMap,
+} from '../utils/recurrence'
 
 const PRIORITY_LABELS: Record<Priority, string> = { low: 'Низкий', medium: 'Средний', high: 'Высокий' }
 const PRIORITY_VARIANTS: Record<Priority, 'default' | 'success' | 'warning' | 'danger'> = {
-  low: 'default', medium: 'warning', high: 'danger'
+  low: 'default',
+  medium: 'warning',
+  high: 'danger'
 }
 const FREQ_LABELS: Record<string, string> = {
-  once: 'Разово', daily: 'Ежедневно', weekly: 'Еженедельно', monthly: 'Ежемесячно', custom: 'Кастомно'
+  once: 'Разово',
+  daily: 'Ежедневно',
+  weekly: 'Еженедельно',
+  monthly: 'Ежемесячно',
+  custom: 'Кастомно'
+}
+
+function getTomorrow() {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
+function addDays(dateStr: string, days: number) {
+  const d = new Date(dateStr + 'T00:00:00')
+  d.setDate(d.getDate() + days)
+  return d.toISOString().slice(0, 10)
 }
 
 export default function Tasks() {
+  const today = new Date().toISOString().slice(0, 10)
+  const monthAgo = addDays(today, -30)
+
   const [search, setSearch] = useState('')
   const [roomFilter, setRoomFilter] = useState('')
   const [priorityFilter, setPriorityFilter] = useState<Priority | ''>('')
   const [formOpen, setFormOpen] = useState(false)
   const [editTask, setEditTask] = useState<Task | null>(null)
+  const [moveTaskId, setMoveTaskId] = useState<string | null>(null)
+  const [moveDate, setMoveDate] = useState(getTomorrow())
 
   const { data: tasks = [], isLoading } = useTasks()
   const { data: rooms = [] } = useRooms()
   const { data: members = [] } = useMembers()
+  const { data: recentEvents = [] } = useEvents({ fromDate: monthAgo, toDate: today })
   const deleteTask = useDeleteTask()
+  const createEvent = useCreateEvent()
 
   const roomMap = useMemo(() => new Map(rooms.map(r => [r.id, r])), [rooms])
   const memberMap = useMemo(() => new Map(members.map(m => [m.id, m])), [members])
+
+  const todayDueEntries = useMemo(
+    () => getDueTaskEntries(tasks, recentEvents, today),
+    [tasks, recentEvents, today]
+  )
+
+  const todayDueMap = useMemo(() => {
+    const map = new Map<string, { occurrenceDate: string }>()
+    todayDueEntries.forEach(entry => {
+      map.set(entry.task.id, {
+        occurrenceDate: entry.originalOccurrenceDate ?? entry.date
+      })
+    })
+    return map
+  }, [todayDueEntries])
+
+  const occurrenceStatusMap = useMemo(
+    () => getOccurrenceStatusMap(recentEvents),
+    [recentEvents]
+  )
 
   const filtered = useMemo(() => tasks.filter(t => {
     if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false
@@ -50,13 +101,41 @@ export default function Tasks() {
     }
   }
 
+  const handleComplete = async (task: Task, occurrenceDate: string) => {
+    try {
+      await createEvent.mutateAsync({
+        task_id: task.id,
+        occurrence_date: occurrenceDate,
+        status: 'done'
+      })
+      toast.success('Задача отмечена выполненной')
+    } catch {
+      toast.error('Не удалось отметить задачу выполненной')
+    }
+  }
+
+  const handleMove = async (taskId: string, occurrenceDate: string) => {
+    try {
+      await createEvent.mutateAsync({
+        task_id: taskId,
+        occurrence_date: occurrenceDate,
+        status: 'moved',
+        moved_to: moveDate
+      })
+      toast.success(`Задача перенесена на ${format(new Date(moveDate), 'd MMMM', { locale: ru })}`)
+      setMoveTaskId(null)
+      setMoveDate(getTomorrow())
+    } catch {
+      toast.error('Не удалось перенести задачу')
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="font-display text-2xl text-forest-500">Задачи</h1>
       </div>
 
-      {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-48">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
@@ -67,10 +146,12 @@ export default function Tasks() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
+
         <select className="input w-40" value={roomFilter} onChange={e => setRoomFilter(e.target.value)}>
           <option value="">Все комнаты</option>
           {rooms.map(r => <option key={r.id} value={r.id}>{r.icon} {r.name}</option>)}
         </select>
+
         <div className="flex gap-1">
           {(['', 'low', 'medium', 'high'] as (Priority | '')[]).map(p => (
             <button
@@ -86,7 +167,6 @@ export default function Tasks() {
         </div>
       </div>
 
-      {/* Task list */}
       {isLoading ? (
         <div className="flex justify-center py-12"><Spinner className="w-8 h-8" /></div>
       ) : filtered.length === 0 ? (
@@ -99,40 +179,124 @@ export default function Tasks() {
           {filtered.map(task => {
             const room = task.room_id ? roomMap.get(task.room_id) : undefined
             const assignee = task.assignee_id ? memberMap.get(task.assignee_id) : undefined
+            const dueInfo = todayDueMap.get(task.id)
+            const todayStatus = occurrenceStatusMap.get(`${task.id}_${today}`)
+            const canActToday =
+              !!dueInfo &&
+              todayStatus !== 'done' &&
+              todayStatus !== 'skipped' &&
+              todayStatus !== 'moved'
+
             return (
-              <div key={task.id} className="card flex items-center gap-4 hover:shadow-hover transition-shadow">
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm text-neutral-800 truncate">{task.title}</p>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    {room && <span className="text-xs text-neutral-500">{room.icon} {room.name}</span>}
-                    <Badge variant={PRIORITY_VARIANTS[task.priority]}>{PRIORITY_LABELS[task.priority]}</Badge>
-                    <Badge>{FREQ_LABELS[task.frequency]}</Badge>
-                    {assignee && (
-                      <span className="text-xs text-neutral-400">{assignee.user?.name ?? 'N/A'}</span>
+              <div key={task.id} className="card hover:shadow-hover transition-shadow">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1 min-w-0">
+                    <p className={`font-medium text-sm truncate ${todayStatus === 'done' ? 'line-through text-neutral-400' : 'text-neutral-800'}`}>
+                      {task.title}
+                    </p>
+
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      {room && <span className="text-xs text-neutral-500">{room.icon} {room.name}</span>}
+                      <Badge variant={PRIORITY_VARIANTS[task.priority]}>{PRIORITY_LABELS[task.priority]}</Badge>
+                      <Badge>{FREQ_LABELS[task.frequency]}</Badge>
+                      {assignee && (
+                        <span className="text-xs text-neutral-400">{assignee.user?.name ?? 'N/A'}</span>
+                      )}
+                      {todayStatus === 'done' && (
+                        <Badge variant="success">Выполнено сегодня</Badge>
+                      )}
+                      {todayStatus === 'moved' && (
+                        <Badge variant="info">Перенесено</Badge>
+                      )}
+                      {!todayStatus && dueInfo && (
+                        <Badge variant="warning">Актуально на сегодня</Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-1 flex-shrink-0">
+                    {canActToday && dueInfo && (
+                      <>
+                        <button
+                          onClick={() => handleComplete(task, dueInfo.occurrenceDate)}
+                          disabled={createEvent.isPending}
+                          title="Отметить выполненной"
+                          className="w-8 h-8 rounded-lg bg-forest-100 hover:bg-forest-200 text-forest-600 flex items-center justify-center transition-colors disabled:opacity-50"
+                        >
+                          <Check size={14} />
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setMoveTaskId(prev => prev === task.id ? null : task.id)
+                            setMoveDate(getTomorrow())
+                          }}
+                          disabled={createEvent.isPending}
+                          title="Перенести"
+                          className="w-8 h-8 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-600 flex items-center justify-center transition-colors disabled:opacity-50"
+                        >
+                          <ArrowRight size={14} />
+                        </button>
+                      </>
                     )}
+
+                    <button
+                      onClick={() => { setEditTask(task); setFormOpen(true) }}
+                      className="w-8 h-8 rounded-lg bg-beige-200 hover:bg-beige-300 text-neutral-500 flex items-center justify-center transition-colors"
+                    >
+                      <Pencil size={14} />
+                    </button>
+
+                    <button
+                      onClick={() => handleDelete(task)}
+                      className="w-8 h-8 rounded-lg bg-red-100 hover:bg-red-200 text-red-500 flex items-center justify-center transition-colors"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
                 </div>
-                <div className="flex gap-1 flex-shrink-0">
-                  <button
-                    onClick={() => { setEditTask(task); setFormOpen(true) }}
-                    className="w-8 h-8 rounded-lg bg-beige-200 hover:bg-beige-300 text-neutral-500 flex items-center justify-center transition-colors"
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(task)}
-                    className="w-8 h-8 rounded-lg bg-red-100 hover:bg-red-200 text-red-500 flex items-center justify-center transition-colors"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+
+                {moveTaskId === task.id && dueInfo && (
+                  <div className="mt-3 pt-3 border-t border-beige-200 animate-fade-in">
+                    <p className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2">
+                      Перенести задачу
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                      <input
+                        type="date"
+                        className="input"
+                        value={moveDate}
+                        min={today}
+                        onChange={e => setMoveDate(e.target.value)}
+                      />
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleMove(task.id, dueInfo.occurrenceDate)}
+                          disabled={createEvent.isPending || !moveDate}
+                          className="btn-primary px-4 py-2 text-sm"
+                        >
+                          Сохранить
+                        </button>
+
+                        <button
+                          onClick={() => setMoveTaskId(null)}
+                          disabled={createEvent.isPending}
+                          className="btn-secondary px-4 py-2 text-sm"
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )
           })}
         </div>
       )}
 
-      {/* FAB */}
       <button
         onClick={() => { setEditTask(null); setFormOpen(true) }}
         className="fixed bottom-20 right-6 md:bottom-8 w-14 h-14 bg-forest-400 hover:bg-forest-500 text-white rounded-full shadow-hover flex items-center justify-center transition-all active:scale-95"
