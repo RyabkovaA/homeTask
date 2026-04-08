@@ -1,17 +1,14 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { useRooms, useCreateRoom, useUpdateRoom, useDeleteRoom } from '../hooks/useRooms'
 import { useMembers, useUpdateMember } from '../hooks/useMembers'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
-import { Badge } from '../components/ui/Badge'
 import type { Room, MemberRole } from '../types'
 import toast from 'react-hot-toast'
 
 const ROLE_LABELS: Record<MemberRole, string> = { admin: 'Админ', member: 'Участник', limited: 'Гость' }
-const ROLE_VARIANTS: Record<MemberRole, 'success' | 'info' | 'default'> = {
-  admin: 'success', member: 'info', limited: 'default'
-}
 
 function RoomForm({ room, onClose }: { room?: Room; onClose: () => void }) {
   const [name, setName] = useState(room?.name ?? '')
@@ -49,7 +46,12 @@ function RoomForm({ room, onClose }: { room?: Room; onClose: () => void }) {
       <div>
         <label className="label">Цвет</label>
         <div className="flex gap-2 items-center">
-          <input type="color" value={color} onChange={e => setColor(e.target.value)} className="w-10 h-10 rounded-lg cursor-pointer" />
+          <input
+            type="color"
+            value={color}
+            onChange={e => setColor(e.target.value)}
+            className="w-10 h-10 rounded-lg cursor-pointer"
+          />
           <input className="input flex-1" value={color} onChange={e => setColor(e.target.value)} />
         </div>
       </div>
@@ -95,7 +97,6 @@ export default function House() {
     <div className="space-y-8 max-w-2xl mx-auto">
       <h1 className="font-display text-2xl text-forest-500">Дом</h1>
 
-      {/* Rooms */}
       <section>
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display text-lg text-neutral-700">Комнаты</h2>
@@ -103,22 +104,44 @@ export default function House() {
             <Plus size={16} className="mr-1 inline" /> Добавить
           </Button>
         </div>
+
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {rooms.map(room => (
-            <div key={room.id} className="card flex flex-col items-center gap-2 relative group">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl" style={{ background: room.color + '33' }}>
-                {room.icon}
-              </div>
-              <p className="text-sm font-medium text-neutral-700 text-center">{room.name}</p>
-              <div className="absolute top-2 right-2 hidden group-hover:flex gap-1">
+            <div key={room.id} className="relative group">
+              <Link
+                to={`/house/room/${room.id}`}
+                className="card flex flex-col items-center gap-2 relative transition-all hover:shadow-hover hover:-translate-y-0.5"
+              >
+                <div
+                  className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
+                  style={{ background: room.color + '33' }}
+                >
+                  {room.icon}
+                </div>
+
+                <p className="text-sm font-medium text-neutral-700 text-center">{room.name}</p>
+                <p className="text-xs text-neutral-400 text-center">Открыть комнату</p>
+              </Link>
+
+              <div className="absolute top-2 right-2 hidden group-hover:flex gap-1 z-10">
                 <button
-                  onClick={() => { setEditRoom(room); setRoomModal(true) }}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setEditRoom(room)
+                    setRoomModal(true)
+                  }}
                   className="w-6 h-6 rounded bg-beige-200 hover:bg-beige-300 text-neutral-500 flex items-center justify-center"
                 >
                   <Pencil size={10} />
                 </button>
+
                 <button
-                  onClick={() => handleDeleteRoom(room)}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    handleDeleteRoom(room)
+                  }}
                   className="w-6 h-6 rounded bg-red-100 hover:bg-red-200 text-red-500 flex items-center justify-center"
                 >
                   <Trash2 size={10} />
@@ -129,7 +152,6 @@ export default function House() {
         </div>
       </section>
 
-      {/* Members */}
       <section>
         <h2 className="font-display text-lg text-neutral-700 mb-4">Участники</h2>
         <div className="space-y-3">
@@ -141,10 +163,12 @@ export default function House() {
               >
                 {member.user?.name?.[0] ?? '?'}
               </div>
+
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm text-neutral-800">{member.user?.name ?? 'N/A'}</p>
                 <p className="text-xs text-neutral-400">{member.user?.email ?? ''}</p>
               </div>
+
               <select
                 className="input w-32 text-xs py-1.5"
                 value={member.role}

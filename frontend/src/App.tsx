@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard'
 import Tasks from './pages/Tasks'
 import Analytics from './pages/Analytics'
 import House from './pages/House'
+import HouseRoom from './pages/HouseRoom'
 import KnowledgeBase from './pages/KnowledgeBase'
 import KnowledgeRoom from './pages/KnowledgeRoom'
 import Profile from './pages/Profile.tsx'
@@ -39,6 +40,7 @@ export default function App() {
             <Route path="tasks" element={<Tasks />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="house" element={<House />} />
+            <Route path="house/room/:roomId" element={<HouseRoom />} />
             <Route path="knowledge" element={<KnowledgeBase />} />
             <Route path="knowledge/room/:roomName" element={<KnowledgeRoom />} />
             <Route path="profile" element={<Profile />} />
