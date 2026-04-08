@@ -9,6 +9,7 @@ import Analytics from './pages/Analytics'
 import House from './pages/House'
 import KnowledgeBase from './pages/KnowledgeBase'
 import KnowledgeRoom from './pages/KnowledgeRoom'
+import Profile from './pages/Profile.tsx'
 import Login from './pages/Login'
 import type { ReactNode } from 'react'
 
@@ -40,6 +41,7 @@ export default function App() {
             <Route path="house" element={<House />} />
             <Route path="knowledge" element={<KnowledgeBase />} />
             <Route path="knowledge/room/:roomName" element={<KnowledgeRoom />} />
+            <Route path="profile" element={<Profile />} />
           </Route>
         </Routes>
       </BrowserRouter>

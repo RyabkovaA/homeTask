@@ -7,6 +7,7 @@ interface AuthState {
   memberId: string | null
   userName: string | null
   setAuth: (token: string, houseId: string, memberId: string, userName: string) => void
+  updateUserData: (userName: string) => void
   logout: () => void
 }
 
@@ -19,7 +20,15 @@ export const useAuthStore = create<AuthState>()(
       userName: null,
       setAuth: (token, houseId, memberId, userName) =>
         set({ token, houseId, memberId, userName }),
-      logout: () => set({ token: null, houseId: null, memberId: null, userName: null })
+      updateUserData: (userName) =>
+        set({ userName }),
+      logout: () =>
+        set({
+          token: null,
+          houseId: null,
+          memberId: null,
+          userName: null,
+        }),
     }),
     { name: 'hometask-auth' }
   )

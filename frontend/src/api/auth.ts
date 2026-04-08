@@ -3,8 +3,6 @@ import client from './client'
 import type { User } from '../types'
 
 export const authApi = {
-  // Логин через отдельный axios без shared client,
-  // чтобы глобальный application/json не ломал form-urlencoded запрос
   login: (email: string, password: string) => {
     const params = new URLSearchParams()
     params.append('username', email)
@@ -24,5 +22,15 @@ export const authApi = {
   register: (email: string, name: string, password: string) =>
     client.post<User>('/auth/register', { email, name, password }).then(r => r.data),
 
-  me: () => client.get<User>('/auth/me').then(r => r.data)
+  me: () =>
+    client.get<User>('/auth/me').then(r => r.data),
+
+  updateMe: (data: Partial<Pick<User, 'name' | 'email'>>) =>
+    client.patch<User>('/auth/me', data).then(r => r.data),
+
+  changePassword: (current_password: string, new_password: string) =>
+    client.post<{ message: string }>('/auth/change-password', {
+      current_password,
+      new_password,
+    }).then(r => r.data),
 }
