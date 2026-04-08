@@ -1,0 +1,101 @@
+# =========================
+# OS / Editor
+# =========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# Root project files
+# =========================
+PROJECT_STATE.md
+CLAUDE.md
+
+# =========================
+# Environment / secrets
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# Python / Backend
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.eggs/
+*.egg-info/
+dist/
+build/
+
+# virtual environments
+.venv/
+venv/
+env/
+
+# Alembic / local db artifacts
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+
+# =========================
+# FastAPI local files
+# =========================
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# =========================
+# Frontend / Node / Vite
+# =========================
+frontend/node_modules/
+node_modules/
+
+frontend/dist/
+dist/
+
+frontend/.vite/
+.vite/
+
+*.tsbuildinfo
+.eslintcache
+
+# =========================
+# Testing artifacts
+# =========================
+coverage/
+test-results/
+playwright-report/
+
+# =========================
+# Docker
+# =========================
+docker-data/
+*.pid
+
+# =========================
+# PWA / generated assets
+# =========================
+frontend/public/icons/generated/
