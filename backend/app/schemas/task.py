@@ -16,6 +16,7 @@ class TaskCreate(BaseModel):
     start_date: date
     days_of_week: Optional[list[int]] = None
     custom_interval_days: Optional[int] = None
+    window_days: int = 0
 
 
 class TaskUpdate(BaseModel):
@@ -28,6 +29,7 @@ class TaskUpdate(BaseModel):
     skip_policy: Optional[SkipPolicy] = None
     days_of_week: Optional[list[int]] = None
     custom_interval_days: Optional[int] = None
+    window_days: Optional[int] = None
     is_active: Optional[bool] = None
 
 
@@ -44,6 +46,7 @@ class TaskOut(BaseModel):
     start_date: date
     days_of_week: Optional[list[int]]
     custom_interval_days: Optional[int]
+    window_days: int
     is_active: bool
     created_at: datetime
 

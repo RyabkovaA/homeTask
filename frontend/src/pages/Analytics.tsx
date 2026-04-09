@@ -1,13 +1,40 @@
 import { useState } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell
+  PieChart, Pie, Cell,
+  BarChart, Bar, LabelList,
 } from 'recharts'
 import { useAnalytics } from '../hooks/useAnalytics'
 import { StatCard } from '../components/StatCard'
 import { Spinner } from '../components/ui/Spinner'
 
 const PERIODS = [7, 30, 90]
+
+function ConsistencyRing({ score }: { score: number }) {
+  const r = 32
+  const circ = 2 * Math.PI * r
+  const filled = (score / 100) * circ
+  const color = score >= 70 ? '#4A7C59' : score >= 40 ? '#F59E0B' : '#EF4444'
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <svg width={80} height={80} viewBox="0 0 80 80">
+        <circle cx={40} cy={40} r={r} fill="none" stroke="#EDE5D5" strokeWidth={8} />
+        <circle
+          cx={40} cy={40} r={r} fill="none"
+          stroke={color} strokeWidth={8}
+          strokeDasharray={`${filled} ${circ}`}
+          strokeLinecap="round"
+          transform="rotate(-90 40 40)"
+        />
+        <text x={40} y={45} textAnchor="middle" fontSize={14} fontWeight={600} fill={color}>
+          {score}
+        </text>
+      </svg>
+      <p className="text-xs text-neutral-500">Стабильность</p>
+    </div>
+  )
+}
 
 export default function Analytics() {
   const [days, setDays] = useState(30)
@@ -23,7 +50,7 @@ export default function Analytics() {
 
   if (!data) return null
 
-  const { metrics, daily_trend, load_distribution } = data
+  const { metrics, daily_trend, load_distribution, room_stats } = data
 
   return (
     <div className="space-y-6">
@@ -44,13 +71,23 @@ export default function Analytics() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Соблюдение" value={metrics.adherence_rate} unit="%" icon="📊" />
-        <StatCard label="Серия" value={metrics.streak} unit="дн" icon="🔥" />
-        <StatCard label="Выполнено" value={metrics.completion_ratio} unit="%" icon="✅" />
-        <StatCard label="Просрочено" value={metrics.overdue_rate} unit="%" icon="⚠️" />
+      {/* Key metrics + consistency ring */}
+      <div className="card">
+        <div className="flex flex-wrap gap-4 items-center justify-between">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-1">
+            <StatCard label="Соблюдение" value={metrics.adherence_rate} unit="%" icon="📊" />
+            <StatCard label="Серия" value={metrics.streak} unit="дн" icon="🔥" />
+            <StatCard label="Выполнено" value={metrics.completion_ratio} unit="%" icon="✅" />
+            <StatCard label="Просрочено" value={metrics.overdue_rate} unit="%" icon="⚠️" />
+          </div>
+          <ConsistencyRing score={metrics.consistency_score} />
+        </div>
+        <p className="text-xs text-neutral-400 mt-3">
+          Стабильность — показывает, насколько равномерно выполняются задачи каждый день (0 = хаотично, 100 = идеально стабильно).
+        </p>
       </div>
 
+      {/* Daily trend */}
       <div className="card">
         <h2 className="font-display text-base text-neutral-700 mb-4">Тренд выполнения</h2>
         <ResponsiveContainer width="100%" height={220}>
@@ -70,7 +107,7 @@ export default function Analytics() {
                 background: '#FDFAF4',
                 border: '1px solid #EDE5D5',
                 borderRadius: 12,
-                fontSize: 12
+                fontSize: 12,
               }}
             />
             <Line
@@ -85,6 +122,56 @@ export default function Analytics() {
         </ResponsiveContainer>
       </div>
 
+      {/* Room breakdown */}
+      {room_stats.length > 0 && (
+        <div className="card">
+          <h2 className="font-display text-base text-neutral-700 mb-4">Соблюдение по комнатам</h2>
+          <ResponsiveContainer width="100%" height={Math.max(180, room_stats.length * 44)}>
+            <BarChart
+              data={room_stats}
+              layout="vertical"
+              margin={{ top: 0, right: 48, bottom: 0, left: 8 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#EDE5D5" horizontal={false} />
+              <XAxis
+                type="number"
+                domain={[0, 100]}
+                tick={{ fontSize: 10, fill: '#9CA3AF' }}
+                tickFormatter={v => `${v}%`}
+              />
+              <YAxis
+                type="category"
+                dataKey="room_name"
+                tick={{ fontSize: 12, fill: '#374151' }}
+                width={110}
+                tickFormatter={(v, i) => `${room_stats[i]?.room_icon ?? ''} ${v}`}
+              />
+              <Tooltip
+                formatter={(v: number, _, props) => [
+                  `${v}% (${props.payload.total_done}/${props.payload.total_planned})`,
+                  'Выполнено',
+                ]}
+                contentStyle={{
+                  background: '#FDFAF4',
+                  border: '1px solid #EDE5D5',
+                  borderRadius: 12,
+                  fontSize: 12,
+                }}
+              />
+              <Bar dataKey="adherence_rate" radius={[0, 6, 6, 0]} fill="#4A7C59">
+                <LabelList
+                  dataKey="adherence_rate"
+                  position="right"
+                  formatter={(v: number) => `${v}%`}
+                  style={{ fontSize: 11, fill: '#6B7280' }}
+                />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Load distribution */}
       {load_distribution.length > 0 && (
         <div className="card overflow-visible">
           <h2 className="font-display text-base text-neutral-700 mb-4">Нагрузка по участникам</h2>
@@ -110,14 +197,13 @@ export default function Analytics() {
                       <Cell key={idx} fill={item.color} />
                     ))}
                   </Pie>
-
                   <Tooltip
                     formatter={(v: number, _n, props) => [`${v}`, props.payload.member_name]}
                     contentStyle={{
                       background: '#FDFAF4',
                       border: '1px solid #EDE5D5',
                       borderRadius: 12,
-                      fontSize: 12
+                      fontSize: 12,
                     }}
                   />
                 </PieChart>
@@ -146,6 +232,7 @@ export default function Analytics() {
         </div>
       )}
 
+      {/* Period totals */}
       <div className="card">
         <h2 className="font-display text-base text-neutral-700 mb-3">Итого за период</h2>
         <div className="grid grid-cols-3 gap-4 text-center">

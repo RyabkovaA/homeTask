@@ -41,6 +41,7 @@ export interface Task {
   start_date: string
   days_of_week: number[] | null
   custom_interval_days: number | null
+  window_days: number
   is_active: boolean
   created_at: string
 }
@@ -101,6 +102,7 @@ export interface Metrics {
   total_planned: number
   total_done: number
   total_overdue: number
+  consistency_score: number
 }
 
 export interface LoadItem {
@@ -111,10 +113,21 @@ export interface LoadItem {
   percentage: number
 }
 
+export interface RoomAnalyticsItem {
+  room_id: string | null
+  room_name: string
+  room_icon: string
+  total_planned: number
+  total_done: number
+  total_overdue: number
+  adherence_rate: number
+}
+
 export interface Analytics {
   metrics: Metrics
   daily_trend: DailyPoint[]
   load_distribution: LoadItem[]
+  room_stats: RoomAnalyticsItem[]
 }
 
 export interface TaskFormData {
@@ -128,4 +141,5 @@ export interface TaskFormData {
   start_date: string
   days_of_week: number[]
   custom_interval_days: number
+  window_days: number
 }

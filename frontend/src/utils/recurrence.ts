@@ -149,3 +149,65 @@ export function getOccurrenceStatusForDate(
   const statusMap = getOccurrenceStatusMap(events)
   return statusMap.get(makeOccurrenceKey(taskId, date))
 }
+
+const DOW_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+
+const SKIP_POLICY_LABELS: Record<string, string> = {
+  move: 'перенос',
+  overdue: 'просрочка',
+  skip: 'пропуск',
+}
+
+/**
+ * Returns a human-readable description of the task's recurrence rule
+ * matching the iCalendar RRULE that the backend generates via build_rrule().
+ *
+ * Examples:
+ *   once    → "Разово, 15 апр"
+ *   daily   → "Ежедневно"
+ *   weekly  → "Еженедельно: Пн, Ср, Пт"
+ *   monthly → "Ежемесячно, 15-го"
+ *   custom  → "Каждые 3 дня"
+ *
+ * Also includes skip-policy and window info when present.
+ */
+export function buildRRuleDescription(task: Task): string {
+  const parts: string[] = []
+
+  switch (task.frequency) {
+    case 'once': {
+      const d = toDateObj(task.start_date)
+      parts.push(`Разово, ${d.getDate()} ${d.toLocaleString('ru', { month: 'short' })}`)
+      break
+    }
+    case 'daily':
+      parts.push('Ежедневно')
+      break
+    case 'weekly': {
+      const start = toDateObj(task.start_date)
+      const startDow = start.getDay() === 0 ? 6 : start.getDay() - 1
+      const days = task.days_of_week ?? [startDow]
+      const dayNames = [...days].sort((a, b) => a - b).map(d => DOW_LABELS[d]).join(', ')
+      parts.push(`Еженедельно: ${dayNames}`)
+      break
+    }
+    case 'monthly': {
+      const d = toDateObj(task.start_date)
+      parts.push(`Ежемесячно, ${d.getDate()}-го`)
+      break
+    }
+    case 'custom':
+      parts.push(`Каждые ${task.custom_interval_days ?? 1} дн.`)
+      break
+  }
+
+  if (task.window_days > 0) {
+    parts.push(`окно ${task.window_days} дн.`)
+  }
+
+  if (task.frequency !== 'once') {
+    parts.push(`при пропуске: ${SKIP_POLICY_LABELS[task.skip_policy] ?? task.skip_policy}`)
+  }
+
+  return parts.join(' · ')
+}

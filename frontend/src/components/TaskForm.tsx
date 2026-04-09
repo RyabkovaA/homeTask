@@ -33,6 +33,7 @@ const defaultForm: TaskFormData = {
   start_date: new Date().toISOString().slice(0, 10),
   days_of_week: [],
   custom_interval_days: 7,
+  window_days: 0,
 }
 
 export function TaskForm({ open, onClose, task }: TaskFormProps) {
@@ -55,6 +56,7 @@ export function TaskForm({ open, onClose, task }: TaskFormProps) {
         start_date: task.start_date,
         days_of_week: task.days_of_week ?? [],
         custom_interval_days: task.custom_interval_days ?? 7,
+        window_days: task.window_days ?? 0,
       })
     } else {
       setForm(defaultForm)
@@ -207,6 +209,26 @@ export function TaskForm({ open, onClose, task }: TaskFormProps) {
             ))}
           </div>
         </div>
+
+        {form.frequency !== 'once' && (
+          <div>
+            <label className="label">
+              Окно выполнения
+              <span className="ml-1 text-xs text-neutral-400 font-normal">— сколько дней после плановой даты задача остаётся активной</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={30}
+                className="input w-20"
+                value={form.window_days}
+                onChange={e => set('window_days', Math.max(0, parseInt(e.target.value) || 0))}
+              />
+              <span className="text-sm text-neutral-500">дней</span>
+            </div>
+          </div>
+        )}
 
         <div>
           <label className="label">Дата начала</label>

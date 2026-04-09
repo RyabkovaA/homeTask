@@ -7,6 +7,7 @@ from app.models.task import Task
 from app.models.member import HouseMember
 from app.schemas.task import TaskCreate, TaskUpdate, TaskOut
 from app.api.v1.endpoints.auth import get_current_member
+from app.services.recurrence_service import build_rrule
 
 router = APIRouter()
 
@@ -65,3 +66,25 @@ async def delete_task(
         raise HTTPException(404)
     task.is_active = False
     await db.commit()
+
+
+@router.get("/tasks/{task_id}/rrule")
+async def get_task_rrule(
+    task_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_member: HouseMember = Depends(get_current_member)
+):
+    """
+    Returns the iCalendar RRULE string for a task (RFC 5545).
+    For one-time tasks rrule is an empty string.
+    """
+    task = await db.get(Task, task_id)
+    if not task:
+        raise HTTPException(404, "Task not found")
+    return {
+        "task_id": str(task_id),
+        "rrule": build_rrule(task),
+        "dtstart": str(task.start_date),
+        "window_days": task.window_days,
+        "skip_policy": task.skip_policy,
+    }
