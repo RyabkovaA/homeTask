@@ -84,6 +84,8 @@ export interface Advice {
   steps: string[]
   room_names: string[]
   task_keywords: string[]
+  season?: string | null
+  category: string
   is_active: boolean
 }
 
@@ -128,6 +130,59 @@ export interface Analytics {
   daily_trend: DailyPoint[]
   load_distribution: LoadItem[]
   room_stats: RoomAnalyticsItem[]
+}
+
+// ---- RAG / AI ----
+
+export interface AdviceSource {
+  id: string
+  title: string
+  score: number
+}
+
+export interface HistorySummary {
+  total: number
+  done: number
+  overdue: number
+  completion_rate: number
+}
+
+export interface RagAdvice {
+  main_advice: string
+  steps: string[]
+  warnings: string[]
+  sources: AdviceSource[]
+  delivery_id: string | null
+  query_used?: string | null
+  history?: HistorySummary | null
+}
+
+export type InsightSeverity = 'info' | 'warning' | 'critical'
+export type InsightType =
+  | 'good_streak'
+  | 'declining_trend'
+  | 'low_adherence_room'
+  | 'most_overdue_task'
+  | 'worst_weekday'
+  | 'low_overall_adherence'
+
+export interface HabitInsight {
+  type: InsightType
+  severity: InsightSeverity
+  title: string
+  description: string
+  metric: number
+  advice: RagAdvice | null
+}
+
+export interface HabitInsights {
+  adherence_summary: string
+  overall_status: 'good' | 'attention' | 'critical'
+  global_adherence: number
+  streak: number
+  total_planned: number
+  total_done: number
+  insights: HabitInsight[]
 }
 
 export interface TaskFormData {

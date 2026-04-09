@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import ast; src=open\\('backend/app/seed_knowledge.py', encoding='utf-8'\\).read\\(\\); tree=ast.parse\\(src\\); print\\('Parse OK'\\)\")"
+    ]
+  }
+}

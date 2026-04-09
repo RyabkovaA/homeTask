@@ -19,7 +19,7 @@ services:
 
   backend:
     build: ./backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: bash start.sh
     environment:
       DATABASE_URL: postgresql+asyncpg://hometask:hometask@postgres:5432/hometask
       SECRET_KEY: dev-secret-key-change-in-prod

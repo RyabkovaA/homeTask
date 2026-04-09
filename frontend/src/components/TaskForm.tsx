@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
+import { LayoutTemplate, X } from 'lucide-react'
 import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
 import type { Task, TaskFormData, Priority, Frequency, SkipPolicy } from '../types'
 import { useRooms } from '../hooks/useRooms'
 import { useMembers } from '../hooks/useMembers'
 import { useCreateTask, useUpdateTask } from '../hooks/useTasks'
+import { getTemplatesForRoom, type TaskTemplate } from '../utils/taskTemplates'
 import toast from 'react-hot-toast'
 
 const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
@@ -15,6 +17,20 @@ const FREQ_OPTIONS: { value: Frequency; label: string }[] = [
   { value: 'monthly', label: 'Ежемесячно' },
   { value: 'custom', label: 'Кастомный' },
 ]
+
+const FREQ_SHORT: Record<Frequency, string> = {
+  once: 'Разово',
+  daily: 'Ежедневно',
+  weekly: 'Еженедельно',
+  monthly: 'Ежемесячно',
+  custom: 'Интервал',
+}
+
+const PRIORITY_LABELS: Record<Priority, string> = {
+  low: '🟢 Низкий',
+  medium: '🟡 Средний',
+  high: '🔴 Высокий',
+}
 
 interface TaskFormProps {
   open: boolean
@@ -36,8 +52,40 @@ const defaultForm: TaskFormData = {
   window_days: 0,
 }
 
+function TemplateCard({
+  tpl,
+  onSelect,
+}: {
+  tpl: TaskTemplate
+  onSelect: (t: TaskTemplate) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(tpl)}
+      className="w-full text-left px-3 py-2.5 rounded-xl border border-beige-200 bg-beige-50 hover:border-forest-300 hover:bg-forest-50 transition-colors group"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-sm font-medium text-neutral-800 group-hover:text-forest-700 leading-snug">
+          {tpl.title}
+        </span>
+        <span className="flex-shrink-0 text-xs text-neutral-400 mt-0.5">
+          {FREQ_SHORT[tpl.frequency]}
+        </span>
+      </div>
+      <div className="flex items-center gap-2 mt-1">
+        <span className="text-xs text-neutral-500">{PRIORITY_LABELS[tpl.priority]}</span>
+        {tpl.description && (
+          <span className="text-xs text-neutral-400 truncate">{tpl.description.slice(0, 60)}{tpl.description.length > 60 ? '…' : ''}</span>
+        )}
+      </div>
+    </button>
+  )
+}
+
 export function TaskForm({ open, onClose, task }: TaskFormProps) {
   const [form, setForm] = useState<TaskFormData>(defaultForm)
+  const [showTemplates, setShowTemplates] = useState(false)
   const { data: rooms = [] } = useRooms()
   const { data: members = [] } = useMembers()
   const createTask = useCreateTask()
@@ -61,6 +109,7 @@ export function TaskForm({ open, onClose, task }: TaskFormProps) {
     } else {
       setForm(defaultForm)
     }
+    setShowTemplates(false)
   }, [task, open])
 
   const set = (key: keyof TaskFormData, val: unknown) =>
@@ -72,6 +121,24 @@ export function TaskForm({ open, onClose, task }: TaskFormProps) {
       : [...form.days_of_week, d]
     set('days_of_week', days)
   }
+
+  const applyTemplate = (tpl: TaskTemplate) => {
+    setForm(f => ({
+      ...f,
+      title: tpl.title,
+      description: tpl.description ?? '',
+      priority: tpl.priority,
+      frequency: tpl.frequency,
+      skip_policy: tpl.skip_policy,
+      days_of_week: tpl.days_of_week ?? [],
+      custom_interval_days: tpl.custom_interval_days ?? 7,
+      window_days: tpl.window_days ?? 0,
+    }))
+    setShowTemplates(false)
+  }
+
+  const selectedRoom = rooms.find(r => r.id === form.room_id)
+  const templates = selectedRoom ? getTemplatesForRoom(selectedRoom.name) : []
 
   const handleSubmit = async () => {
     if (!form.title.trim()) return toast.error('Введите название задачи')
@@ -100,26 +167,81 @@ export function TaskForm({ open, onClose, task }: TaskFormProps) {
   return (
     <Modal open={open} onClose={onClose} title={task ? 'Редактировать задачу' : 'Новая задача'}>
       <div className="space-y-4">
-        <div>
-          <label className="label">Название</label>
-          <input className="input" value={form.title} onChange={e => set('title', e.target.value)} placeholder="Название задачи" />
-        </div>
 
-        <div>
-          <label className="label">Описание</label>
-          <textarea className="input resize-none h-20" value={form.description} onChange={e => set('description', e.target.value)} placeholder="Опционально" />
-        </div>
-
+        {/* Комната */}
         <div>
           <label className="label">Комната</label>
-          <select className="input" value={form.room_id} onChange={e => set('room_id', e.target.value)}>
+          <select
+            className="input"
+            value={form.room_id}
+            onChange={e => {
+              set('room_id', e.target.value)
+              setShowTemplates(false)
+            }}
+          >
             <option value="">— Без комнаты —</option>
             {rooms.map(r => (
               <option key={r.id} value={r.id}>{r.icon} {r.name}</option>
             ))}
           </select>
+
+          {/* Шаблоны задач */}
+          {selectedRoom && (
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => setShowTemplates(v => !v)}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-forest-600 hover:text-forest-700 transition-colors"
+              >
+                <LayoutTemplate size={13} />
+                {showTemplates ? 'Скрыть шаблоны' : `Шаблоны задач для «${selectedRoom.name}»`}
+              </button>
+
+              {showTemplates && (
+                <div className="mt-2 space-y-1.5 max-h-56 overflow-y-auto pr-1 animate-fade-in">
+                  {templates.map((tpl, i) => (
+                    <TemplateCard key={i} tpl={tpl} onSelect={applyTemplate} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
+        {/* Название */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="label mb-0">Название</label>
+            {form.title && (
+              <button
+                type="button"
+                onClick={() => set('title', '')}
+                className="text-neutral-300 hover:text-neutral-500 transition-colors"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+          <input
+            className="input"
+            value={form.title}
+            onChange={e => set('title', e.target.value)}
+            placeholder="Название задачи"
+          />
+        </div>
+
+        {/* Описание */}
+        <div>
+          <label className="label">Описание</label>
+          <textarea
+            className="input resize-none h-20"
+            value={form.description}
+            onChange={e => set('description', e.target.value)}
+            placeholder="Опционально"
+          />
+        </div>
+
+        {/* Приоритет */}
         <div>
           <label className="label">Приоритет</label>
           <div className="flex gap-2">
@@ -134,12 +256,13 @@ export function TaskForm({ open, onClose, task }: TaskFormProps) {
                     : 'border-beige-200 bg-beige-100 text-neutral-600'
                 }`}
               >
-                {p === 'low' ? '🟢 Низкий' : p === 'medium' ? '🟡 Средний' : '🔴 Высокий'}
+                {PRIORITY_LABELS[p]}
               </button>
             ))}
           </div>
         </div>
 
+        {/* Частота */}
         <div>
           <label className="label">Частота</label>
           <div className="flex flex-wrap gap-1">
@@ -193,6 +316,7 @@ export function TaskForm({ open, onClose, task }: TaskFormProps) {
           )}
         </div>
 
+        {/* Политика пропуска */}
         <div>
           <label className="label">Политика пропуска</label>
           <div className="flex gap-2">
@@ -210,6 +334,7 @@ export function TaskForm({ open, onClose, task }: TaskFormProps) {
           </div>
         </div>
 
+        {/* Окно выполнения */}
         {form.frequency !== 'once' && (
           <div>
             <label className="label">
@@ -230,11 +355,18 @@ export function TaskForm({ open, onClose, task }: TaskFormProps) {
           </div>
         )}
 
+        {/* Дата начала */}
         <div>
           <label className="label">Дата начала</label>
-          <input type="date" className="input" value={form.start_date} onChange={e => set('start_date', e.target.value)} />
+          <input
+            type="date"
+            className="input"
+            value={form.start_date}
+            onChange={e => set('start_date', e.target.value)}
+          />
         </div>
 
+        {/* Ответственный */}
         <div>
           <label className="label">Ответственный</label>
           <select className="input" value={form.assignee_id} onChange={e => set('assignee_id', e.target.value)}>

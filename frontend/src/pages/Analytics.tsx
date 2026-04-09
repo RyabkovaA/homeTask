@@ -4,12 +4,19 @@ import {
   PieChart, Pie, Cell,
   BarChart, Bar, LabelList,
 } from 'recharts'
+import { AlertTriangle, Info, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import { useAnalytics } from '../hooks/useAnalytics'
+import { useHabitInsights } from '../hooks/useRag'
 import { StatCard } from '../components/StatCard'
+import { AdvicePanel } from '../components/AdvicePanel'
 import { Spinner } from '../components/ui/Spinner'
+import type { HabitInsight, InsightSeverity } from '../types'
 
 const PERIODS = [7, 30, 90]
 
+// ---------------------------------------------------------------------------
+// ConsistencyRing
+// ---------------------------------------------------------------------------
 function ConsistencyRing({ score }: { score: number }) {
   const r = 32
   const circ = 2 * Math.PI * r
@@ -36,6 +43,125 @@ function ConsistencyRing({ score }: { score: number }) {
   )
 }
 
+// ---------------------------------------------------------------------------
+// InsightCard
+// ---------------------------------------------------------------------------
+const SEVERITY_CONFIG: Record<InsightSeverity, {
+  icon: React.ElementType
+  bg: string
+  border: string
+  iconColor: string
+  label: string
+}> = {
+  critical: {
+    icon: AlertTriangle,
+    bg: 'bg-red-50',
+    border: 'border-red-200',
+    iconColor: 'text-red-500',
+    label: 'Критично',
+  },
+  warning: {
+    icon: AlertTriangle,
+    bg: 'bg-amber-50',
+    border: 'border-amber-200',
+    iconColor: 'text-amber-500',
+    label: 'Внимание',
+  },
+  info: {
+    icon: Info,
+    bg: 'bg-forest-50',
+    border: 'border-forest-200',
+    iconColor: 'text-forest-500',
+    label: 'Инфо',
+  },
+}
+
+function InsightCard({ insight }: { insight: HabitInsight }) {
+  const [expanded, setExpanded] = useState(false)
+  const cfg = SEVERITY_CONFIG[insight.severity]
+  const Icon = cfg.icon
+
+  return (
+    <div className={`rounded-xl border ${cfg.border} ${cfg.bg} p-3 space-y-2`}>
+      <div className="flex items-start gap-2">
+        <Icon size={16} className={`${cfg.iconColor} flex-shrink-0 mt-0.5`} />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-neutral-800">{insight.title}</p>
+          <p className="text-xs text-neutral-600 mt-0.5 leading-relaxed">{insight.description}</p>
+        </div>
+
+        {insight.advice && (
+          <button
+            onClick={() => setExpanded(e => !e)}
+            className="flex-shrink-0 text-xs text-forest-600 font-medium flex items-center gap-0.5 hover:text-forest-700 transition-colors"
+          >
+            Совет
+            {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </button>
+        )}
+      </div>
+
+      {expanded && insight.advice && (
+        <AdvicePanel advice={insight.advice} compact />
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// HabitInsightsSection
+// ---------------------------------------------------------------------------
+function HabitInsightsSection({ days }: { days: number }) {
+  const { data: insights, isLoading } = useHabitInsights(days)
+
+  if (isLoading) {
+    return (
+      <div className="card flex items-center gap-2 py-4 text-sm text-neutral-500">
+        <Spinner className="w-4 h-4" />
+        Анализируем поведение пользователей...
+      </div>
+    )
+  }
+  if (!insights) return null
+
+  const statusColors = {
+    good: 'text-forest-600 bg-forest-50 border-forest-200',
+    attention: 'text-amber-700 bg-amber-50 border-amber-200',
+    critical: 'text-red-700 bg-red-50 border-red-200',
+  }
+  const StatusIcon = insights.overall_status === 'good' ? CheckCircle : AlertTriangle
+
+  return (
+    <div className="card space-y-4">
+      <div className="flex items-start gap-3">
+        <div className="flex-1">
+          <h2 className="font-display text-base text-neutral-700 mb-1">Анализ привычек</h2>
+          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium ${statusColors[insights.overall_status]}`}>
+            <StatusIcon size={13} />
+            {insights.adherence_summary}
+          </div>
+        </div>
+      </div>
+
+      {insights.insights.length === 0 ? (
+        <div className="flex items-center gap-2 text-sm text-neutral-500 py-2">
+          <CheckCircle size={16} className="text-forest-500" />
+          Проблемных паттернов не обнаружено. Отличная работа!
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {insights.insights.map((insight, i) => (
+            <InsightCard key={i} insight={insight} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Main Analytics page
+// ---------------------------------------------------------------------------
 export default function Analytics() {
   const [days, setDays] = useState(30)
   const { data, isLoading } = useAnalytics(days)
@@ -83,9 +209,12 @@ export default function Analytics() {
           <ConsistencyRing score={metrics.consistency_score} />
         </div>
         <p className="text-xs text-neutral-400 mt-3">
-          Стабильность — показывает, насколько равномерно выполняются задачи каждый день (0 = хаотично, 100 = идеально стабильно).
+          Стабильность — насколько равномерно выполняются задачи каждый день (0 = хаотично, 100 = идеально стабильно).
         </p>
       </div>
+
+      {/* Habit insights — AI section */}
+      <HabitInsightsSection days={days} />
 
       {/* Daily trend */}
       <div className="card">

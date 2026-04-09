@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, tasks, events, rooms, members, analytics, advice
+from app.api.v1.endpoints import auth, tasks, events, rooms, members, analytics, advice, rag
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(auth.router, tags=["auth"])
@@ -9,3 +9,4 @@ router.include_router(rooms.router, tags=["rooms"])
 router.include_router(members.router, tags=["members"])
 router.include_router(analytics.router, tags=["analytics"])
 router.include_router(advice.router, tags=["advice"])
+router.include_router(rag.router, tags=["rag"])

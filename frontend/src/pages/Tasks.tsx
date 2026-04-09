@@ -1,19 +1,22 @@
 import { useState, useMemo } from 'react'
-import { Plus, Search, Pencil, Trash2, Check, ArrowRight } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Check, ArrowRight, Lightbulb } from 'lucide-react'
 import { useTasks, useDeleteTask } from '../hooks/useTasks'
 import { useRooms } from '../hooks/useRooms'
 import { useMembers } from '../hooks/useMembers'
 import { useCreateEvent, useEvents } from '../hooks/useEvents'
+import { useTaskRagAdvice } from '../hooks/useRag'
 import { TaskForm } from '../components/TaskForm'
+import { AdvicePanel } from '../components/AdvicePanel'
 import { Badge } from '../components/ui/Badge'
 import { Spinner } from '../components/ui/Spinner'
-import type { Task, Priority } from '../types'
+import type { Task, Priority, RagAdvice } from '../types'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import {
   getDueTaskEntries,
   getOccurrenceStatusMap,
+  buildRRuleDescription,
 } from '../utils/recurrence'
 
 const PRIORITY_LABELS: Record<Priority, string> = { low: 'Низкий', medium: 'Средний', high: 'Высокий' }
@@ -21,13 +24,6 @@ const PRIORITY_VARIANTS: Record<Priority, 'default' | 'success' | 'warning' | 'd
   low: 'default',
   medium: 'warning',
   high: 'danger'
-}
-const FREQ_LABELS: Record<string, string> = {
-  once: 'Разово',
-  daily: 'Ежедневно',
-  weekly: 'Еженедельно',
-  monthly: 'Ежемесячно',
-  custom: 'Кастомно'
 }
 
 function getTomorrow() {
@@ -53,6 +49,11 @@ export default function Tasks() {
   const [editTask, setEditTask] = useState<Task | null>(null)
   const [moveTaskId, setMoveTaskId] = useState<string | null>(null)
   const [moveDate, setMoveDate] = useState(getTomorrow())
+  // RAG advice state: taskId → advice result (null while loading)
+  const [adviceOpenId, setAdviceOpenId] = useState<string | null>(null)
+  const [adviceMap, setAdviceMap] = useState<Record<string, RagAdvice>>({})
+  const [adviceLoadingId, setAdviceLoadingId] = useState<string | null>(null)
+  const [adviceErrorId, setAdviceErrorId] = useState<string | null>(null)
 
   const { data: tasks = [], isLoading } = useTasks()
   const { data: rooms = [] } = useRooms()
@@ -60,6 +61,7 @@ export default function Tasks() {
   const { data: recentEvents = [] } = useEvents({ fromDate: monthAgo, toDate: today })
   const deleteTask = useDeleteTask()
   const createEvent = useCreateEvent()
+  const getAdvice = useTaskRagAdvice()
 
   const roomMap = useMemo(() => new Map(rooms.map(r => [r.id, r])), [rooms])
   const memberMap = useMemo(() => new Map(members.map(m => [m.id, m])), [members])
@@ -130,6 +132,30 @@ export default function Tasks() {
     }
   }
 
+  const handleToggleAdvice = async (task: Task) => {
+    // Toggle off
+    if (adviceOpenId === task.id) {
+      setAdviceOpenId(null)
+      return
+    }
+    setAdviceOpenId(task.id)
+    setAdviceErrorId(null)
+
+    // Already loaded — just show
+    if (adviceMap[task.id]) return
+
+    setAdviceLoadingId(task.id)
+    try {
+      const advice = await getAdvice.mutateAsync(task.id)
+      setAdviceMap(prev => ({ ...prev, [task.id]: advice }))
+    } catch {
+      setAdviceErrorId(task.id)
+      toast.error('Не удалось получить совет')
+    } finally {
+      setAdviceLoadingId(null)
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -186,6 +212,9 @@ export default function Tasks() {
               todayStatus !== 'done' &&
               todayStatus !== 'skipped' &&
               todayStatus !== 'moved'
+            const adviceOpen = adviceOpenId === task.id
+            const adviceLoading = adviceLoadingId === task.id
+            const adviceError = adviceErrorId === task.id
 
             return (
               <div key={task.id} className="card hover:shadow-hover transition-shadow">
@@ -198,7 +227,7 @@ export default function Tasks() {
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
                       {room && <span className="text-xs text-neutral-500">{room.icon} {room.name}</span>}
                       <Badge variant={PRIORITY_VARIANTS[task.priority]}>{PRIORITY_LABELS[task.priority]}</Badge>
-                      <Badge>{FREQ_LABELS[task.frequency]}</Badge>
+                      <span className="text-xs text-neutral-400">{buildRRuleDescription(task)}</span>
                       {assignee && (
                         <span className="text-xs text-neutral-400">{assignee.user?.name ?? 'N/A'}</span>
                       )}
@@ -215,6 +244,20 @@ export default function Tasks() {
                   </div>
 
                   <div className="flex gap-1 flex-shrink-0">
+                    {/* RAG advice button */}
+                    <button
+                      onClick={() => handleToggleAdvice(task)}
+                      disabled={adviceLoading}
+                      title="Получить совет из базы знаний"
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50 ${
+                        adviceOpen
+                          ? 'bg-forest-200 text-forest-700'
+                          : 'bg-beige-100 hover:bg-forest-100 text-neutral-400 hover:text-forest-600'
+                      }`}
+                    >
+                      {adviceLoading ? <Spinner className="w-3.5 h-3.5" /> : <Lightbulb size={14} />}
+                    </button>
+
                     {canActToday && dueInfo && (
                       <>
                         <button
@@ -255,6 +298,16 @@ export default function Tasks() {
                     </button>
                   </div>
                 </div>
+
+                {/* RAG advice panel */}
+                {adviceOpen && (
+                  <AdvicePanel
+                    advice={adviceMap[task.id] ?? null}
+                    isLoading={adviceLoading}
+                    error={adviceError}
+                    compact={false}
+                  />
+                )}
 
                 {moveTaskId === task.id && dueInfo && (
                   <div className="mt-3 pt-3 border-t border-beige-200 animate-fade-in">

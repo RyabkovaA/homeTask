@@ -9,6 +9,8 @@ class AdviceCreate(BaseModel):
     steps: list[str] = []
     room_names: list[str] = []
     task_keywords: list[str] = []
+    season: Optional[str] = None       # null | "spring" | "summer" | "autumn" | "winter"
+    category: str = "regular"          # "regular" | "deep" | "prevention" | "storage" | "nonobvious"
 
 
 class AdviceUpdate(BaseModel):
@@ -17,6 +19,8 @@ class AdviceUpdate(BaseModel):
     steps: Optional[list[str]] = None
     room_names: Optional[list[str]] = None
     task_keywords: Optional[list[str]] = None
+    season: Optional[str] = None
+    category: Optional[str] = None
     is_active: Optional[bool] = None
 
 
@@ -27,6 +31,8 @@ class AdviceOut(BaseModel):
     steps: list[str]
     room_names: list[str]
     task_keywords: list[str]
+    season: Optional[str]
+    category: str
     is_active: bool
 
     model_config = {"from_attributes": True}

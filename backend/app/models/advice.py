@@ -14,4 +14,8 @@ class Advice(Base):
     steps: Mapped[list] = mapped_column(JSON, default=list)
     room_names: Mapped[list] = mapped_column(JSON, default=list)
     task_keywords: Mapped[list] = mapped_column(JSON, default=list)
+    # season: null = year-round; "spring" | "summer" | "autumn" | "winter"
+    season: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # category: "regular" | "deep" | "prevention" | "storage" | "nonobvious"
+    category: Mapped[str] = mapped_column(String(20), default="regular")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
