@@ -17,7 +17,8 @@ class LoadDistributionItem(BaseModel):
     member_name: str
     color: str
     done_count: int
-    percentage: float
+    effort_hours: float   # total effort-hours of completed tasks
+    percentage: float     # share of total effort-hours
 
 
 class DailyPoint(BaseModel):

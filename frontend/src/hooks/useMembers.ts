@@ -12,12 +12,31 @@ export function useMembers() {
   })
 }
 
+export function useInviteMember() {
+  const qc = useQueryClient()
+  const houseId = useAuthStore(s => s.houseId)
+  return useMutation({
+    mutationFn: (data: { email: string; role?: MemberRole; color?: string }) =>
+      membersApi.invite(houseId!, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['members', houseId] })
+  })
+}
+
 export function useUpdateMember() {
   const qc = useQueryClient()
   const houseId = useAuthStore(s => s.houseId)
   return useMutation({
     mutationFn: ({ memberId, data }: { memberId: string; data: { role?: MemberRole; color?: string } }) =>
       membersApi.update(memberId, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['members', houseId] })
+  })
+}
+
+export function useRemoveMember() {
+  const qc = useQueryClient()
+  const houseId = useAuthStore(s => s.houseId)
+  return useMutation({
+    mutationFn: (memberId: string) => membersApi.remove(memberId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['members', houseId] })
   })
 }

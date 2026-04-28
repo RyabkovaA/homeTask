@@ -149,21 +149,30 @@ async def get_analytics(
         ))
 
     # ------------------------------------------------------- load distribution
-    load_map: dict[str, int] = {}
+    # Weight load by effort_hours rather than raw task count
+    task_effort_map = {str(t.id): t.effort_hours for t in tasks}
+    load_count_map: dict[str, int] = {}
+    load_effort_map: dict[str, float] = {}
     for event in events:
         if event.status == EventStatus.done:
-            load_map[str(event.actor_id)] = load_map.get(str(event.actor_id), 0) + 1
+            mid = str(event.actor_id)
+            effort = task_effort_map.get(str(event.task_id), 1.0)
+            load_count_map[mid] = load_count_map.get(mid, 0) + 1
+            load_effort_map[mid] = load_effort_map.get(mid, 0.0) + effort
 
-    total_done_all = sum(load_map.values()) or 1
+    total_effort_all = sum(load_effort_map.values()) or 1.0
     load_distribution = []
     for member, user in members_with_users:
-        count = load_map.get(str(member.id), 0)
+        mid = str(member.id)
+        count = load_count_map.get(mid, 0)
+        effort = round(load_effort_map.get(mid, 0.0), 2)
         load_distribution.append(LoadDistributionItem(
-            member_id=str(member.id),
+            member_id=mid,
             member_name=user.name,
             color=member.color,
             done_count=count,
-            percentage=round(count / total_done_all * 100, 1),
+            effort_hours=effort,
+            percentage=round(effort / total_effort_all * 100, 1),
         ))
 
     # ---------------------------------------------------------- room stats

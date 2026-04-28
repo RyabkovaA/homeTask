@@ -42,7 +42,14 @@ export interface Task {
   days_of_week: number[] | null
   custom_interval_days: number | null
   window_days: number
+  effort_hours: number
   is_active: boolean
+  created_at: string
+}
+
+export interface House {
+  id: string
+  name: string
   created_at: string
 }
 
@@ -112,6 +119,7 @@ export interface LoadItem {
   member_name: string
   color: string
   done_count: number
+  effort_hours: number
   percentage: number
 }
 
@@ -185,6 +193,49 @@ export interface HabitInsights {
   insights: HabitInsight[]
 }
 
+// ---- Suggestions ----
+
+export interface SuggestedTask {
+  title: string
+  room_name: string | null
+  frequency: Frequency
+  effort_hours: number
+  reason: string
+  source: 'gap' | 'seasonal' | 'llm'
+  is_reschedule: boolean
+}
+
+export interface TaskSuggestionsResponse {
+  season: string
+  suggestions: SuggestedTask[]
+}
+
+// ---- Completion probability ----
+
+export interface CompletionSignals {
+  task_rate: number
+  member_rate: number
+  weekday_rate: number
+  room_rate: number
+}
+
+export interface CompletionProbability {
+  probability: number
+  confidence: 'high' | 'medium' | 'low'
+  signals: CompletionSignals
+  reason: string
+}
+
+// ---- Nudge ----
+
+export interface Nudge {
+  should_nudge: boolean
+  due_count: number
+  message: string
+  best_weekdays: string[]
+  is_productive_day: boolean
+}
+
 export interface TaskFormData {
   title: string
   description: string
@@ -197,4 +248,5 @@ export interface TaskFormData {
   days_of_week: number[]
   custom_interval_days: number
   window_days: number
+  effort_hours: number
 }

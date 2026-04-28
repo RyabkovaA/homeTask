@@ -1,15 +1,15 @@
 import { useState, useMemo } from 'react'
-import { Plus, Search, Pencil, Trash2, Check, ArrowRight, Lightbulb } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Check, ArrowRight, Lightbulb, Sparkles, X } from 'lucide-react'
 import { useTasks, useDeleteTask } from '../hooks/useTasks'
 import { useRooms } from '../hooks/useRooms'
 import { useMembers } from '../hooks/useMembers'
 import { useCreateEvent, useEvents } from '../hooks/useEvents'
-import { useTaskRagAdvice } from '../hooks/useRag'
+import { useTaskRagAdvice, useSuggestTasks } from '../hooks/useRag'
 import { TaskForm } from '../components/TaskForm'
 import { AdvicePanel } from '../components/AdvicePanel'
 import { Badge } from '../components/ui/Badge'
 import { Spinner } from '../components/ui/Spinner'
-import type { Task, Priority, RagAdvice } from '../types'
+import type { Task, Priority, RagAdvice, SuggestedTask } from '../types'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
@@ -54,6 +54,9 @@ export default function Tasks() {
   const [adviceMap, setAdviceMap] = useState<Record<string, RagAdvice>>({})
   const [adviceLoadingId, setAdviceLoadingId] = useState<string | null>(null)
   const [adviceErrorId, setAdviceErrorId] = useState<string | null>(null)
+  const [suggestOpen, setSuggestOpen] = useState(false)
+  const [suggestions, setSuggestions] = useState<SuggestedTask[]>([])
+  const [suggestSeason, setSuggestSeason] = useState('')
 
   const { data: tasks = [], isLoading } = useTasks()
   const { data: rooms = [] } = useRooms()
@@ -62,6 +65,7 @@ export default function Tasks() {
   const deleteTask = useDeleteTask()
   const createEvent = useCreateEvent()
   const getAdvice = useTaskRagAdvice()
+  const suggestMutation = useSuggestTasks()
 
   const roomMap = useMemo(() => new Map(rooms.map(r => [r.id, r])), [rooms])
   const memberMap = useMemo(() => new Map(members.map(m => [m.id, m])), [members])
@@ -86,12 +90,25 @@ export default function Tasks() {
     [recentEvents]
   )
 
-  const filtered = useMemo(() => tasks.filter(t => {
-    if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false
-    if (roomFilter && t.room_id !== roomFilter) return false
-    if (priorityFilter && t.priority !== priorityFilter) return false
-    return true
-  }), [tasks, search, roomFilter, priorityFilter])
+  const filtered = useMemo(() => {
+    const base = tasks.filter(t => {
+      if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false
+      if (roomFilter && t.room_id !== roomFilter) return false
+      if (priorityFilter && t.priority !== priorityFilter) return false
+      return true
+    })
+    // Completed tasks go to the bottom
+    const doneToday = new Set(
+      todayDueEntries
+        .filter(e => occurrenceStatusMap.get(`${e.task.id}_${today}`) === 'done')
+        .map(e => e.task.id)
+    )
+    return [...base].sort((a, b) => {
+      const aDone = doneToday.has(a.id) ? 1 : 0
+      const bDone = doneToday.has(b.id) ? 1 : 0
+      return aDone - bDone
+    })
+  }, [tasks, search, roomFilter, priorityFilter, todayDueEntries, occurrenceStatusMap, today])
 
   const handleDelete = async (task: Task) => {
     if (!confirm(`Удалить "${task.title}"?`)) return
@@ -132,6 +149,18 @@ export default function Tasks() {
     }
   }
 
+  const handleSuggest = async () => {
+    setSuggestOpen(true)
+    if (suggestions.length > 0) return
+    try {
+      const res = await suggestMutation.mutateAsync()
+      setSuggestions(res.suggestions)
+      setSuggestSeason(res.season)
+    } catch {
+      toast.error('Не удалось получить предложения')
+    }
+  }
+
   const handleToggleAdvice = async (task: Task) => {
     // Toggle off
     if (adviceOpenId === task.id) {
@@ -160,6 +189,14 @@ export default function Tasks() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="font-display text-2xl text-forest-500">Задачи</h1>
+        <button
+          onClick={handleSuggest}
+          disabled={suggestMutation.isPending}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl bg-forest-50 border border-forest-200 text-forest-600 text-sm font-medium hover:bg-forest-100 transition-colors disabled:opacity-50"
+        >
+          {suggestMutation.isPending ? <Spinner className="w-3.5 h-3.5" /> : <Sparkles size={14} />}
+          Предложить задачи
+        </button>
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -362,6 +399,70 @@ export default function Tasks() {
         onClose={() => { setFormOpen(false); setEditTask(null) }}
         task={editTask}
       />
+
+      {/* Suggestions modal */}
+      {suggestOpen && (
+        <div className="fixed inset-0 bg-black/30 z-40 flex items-end md:items-center justify-center p-4">
+          <div className="bg-beige-50 rounded-2xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col animate-fade-in">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-beige-200">
+              <div>
+                <h2 className="font-display text-lg text-forest-500 font-semibold flex items-center gap-2">
+                  <Sparkles size={18} /> Предложения задач
+                </h2>
+                {suggestSeason && (
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    Сезон: {suggestSeason === 'winter' ? 'Зима' : suggestSeason === 'spring' ? 'Весна' : suggestSeason === 'summer' ? 'Лето' : 'Осень'} · {suggestions.length} рекомендаций
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => setSuggestOpen(false)}
+                className="w-8 h-8 rounded-xl bg-beige-200 hover:bg-beige-300 flex items-center justify-center text-neutral-500 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+              {suggestMutation.isPending ? (
+                <div className="flex justify-center py-8"><Spinner className="w-6 h-6" /></div>
+              ) : suggestions.length === 0 ? (
+                <p className="text-center text-neutral-400 py-8">Нет предложений</p>
+              ) : suggestions.map((s, i) => (
+                <div key={i} className="rounded-xl border border-beige-200 bg-white p-3 space-y-1.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm text-neutral-800">{s.title}</p>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        {s.room_name && <span className="text-xs text-neutral-500">📍 {s.room_name}</span>}
+                        <span className="text-xs text-neutral-400">{s.effort_hours}ч</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded-md font-medium ${
+                          s.source === 'llm' ? 'bg-purple-100 text-purple-600' :
+                          s.source === 'gap' ? 'bg-amber-100 text-amber-600' :
+                          'bg-forest-100 text-forest-600'
+                        }`}>
+                          {s.source === 'llm' ? 'AI' : s.source === 'gap' ? 'Пробел' : 'Сезон'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-neutral-500 mt-1">{s.reason}</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSuggestOpen(false)
+                        setEditTask(null)
+                        setFormOpen(true)
+                      }}
+                      className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-forest-400 hover:bg-forest-500 text-white text-xs font-medium transition-colors"
+                    >
+                      Добавить
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

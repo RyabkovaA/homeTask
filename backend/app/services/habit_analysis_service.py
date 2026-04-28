@@ -39,12 +39,30 @@ from app.services.rag_service import rag_recommend_by_query
 
 
 # ---------------------------------------------------------------------------
-# Thresholds for insight detection
+# Default thresholds — overridden by adaptive values per user below
 # ---------------------------------------------------------------------------
-LOW_ADHERENCE_THRESHOLD = 0.55       # below 55% completion for a room/task
-DECLINING_TREND_DROP = 15.0          # adherence dropped by 15 pp vs prior period
-WORST_WEEKDAY_THRESHOLD = 0.45       # below 45% on a specific weekday
+DEFAULT_LOW_ADHERENCE_THRESHOLD = 0.55
+DEFAULT_DECLINING_TREND_DROP = 15.0
+DEFAULT_WORST_WEEKDAY_THRESHOLD = 0.45
 POSITIVE_STREAK_THRESHOLD = 5        # streak >= 5 days is noteworthy
+
+
+def _adaptive_thresholds(personal_baseline: float) -> dict:
+    """
+    Derive adaptive thresholds from the member's personal baseline completion rate.
+
+    A member who consistently achieves 80% is held to a higher bar than one
+    who is still building habits at 40%. This prevents false negatives for
+    high performers and false positives for beginners.
+    """
+    low_adherence = max(0.25, personal_baseline - 0.20)
+    worst_weekday = max(0.15, personal_baseline - 0.25)
+    declining_drop = max(8.0, personal_baseline * 100 * 0.25)  # 25% relative drop
+    return {
+        "low_adherence": low_adherence,
+        "worst_weekday": worst_weekday,
+        "declining_drop": declining_drop,
+    }
 
 
 _WEEKDAY_RU = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
@@ -95,6 +113,24 @@ async def get_habit_insights(
         )
     )
     events: list[TaskEvent] = events_q.scalars().all()
+
+    # Compute personal baseline from last 90 days (broader window than analysis period)
+    baseline_from = today - timedelta(days=90)
+    baseline_events_q = await db.execute(
+        select(TaskEvent).where(
+            and_(
+                TaskEvent.task_id.in_([t.id for t in tasks]),
+                TaskEvent.actor_id == member.id,
+                TaskEvent.occurrence_date >= baseline_from,
+                TaskEvent.occurrence_date <= today,
+            )
+        )
+    )
+    baseline_events: list[TaskEvent] = baseline_events_q.scalars().all()
+    baseline_done = sum(1 for e in baseline_events if e.status == EventStatus.done)
+    baseline_total = len(baseline_events)
+    personal_baseline = (baseline_done / baseline_total) if baseline_total >= 5 else DEFAULT_LOW_ADHERENCE_THRESHOLD
+    thresholds = _adaptive_thresholds(personal_baseline)
 
     rooms_q = await db.execute(select(Room).where(Room.house_id == house_id))
     rooms: list[Room] = rooms_q.scalars().all()
@@ -182,7 +218,7 @@ async def get_habit_insights(
         ))
 
     # --- 2. Declining trend ---
-    if period1_planned > 0 and period2_planned > 0 and trend_delta < -DECLINING_TREND_DROP:
+    if period1_planned > 0 and period2_planned > 0 and trend_delta < -thresholds["declining_drop"]:
         q = f"мотивация регулярность рутина снижение активности {' '.join(t.title for t in tasks[:3])}"
         rag = await rag_recommend_by_query(db, member, q, context_type="analytics")
         insights.append(HabitInsight(
@@ -203,7 +239,7 @@ async def get_habit_insights(
         if stats["planned"] < 3:
             continue
         room_adherence = stats["done"] / stats["planned"]
-        if room_adherence < LOW_ADHERENCE_THRESHOLD:
+        if room_adherence < thresholds["low_adherence"]:
             room = room_map.get(room_id)
             room_name = room.name if room else "Без комнаты"
             room_icon = room.icon if room else "📋"
@@ -257,7 +293,7 @@ async def get_habit_insights(
                 worst_dow_rate = rate
                 worst_dow = dow
 
-    if worst_dow is not None and worst_dow_rate < WORST_WEEKDAY_THRESHOLD:
+    if worst_dow is not None and worst_dow_rate < thresholds["worst_weekday"]:
         day_name = _WEEKDAY_RU[worst_dow]
         q = f"планирование {day_name} нагрузка расписание советы распределение задач"
         rag = await rag_recommend_by_query(db, member, q, context_type="analytics")
@@ -318,6 +354,7 @@ async def get_habit_insights(
         "streak": streak,
         "total_planned": total_planned,
         "total_done": total_done,
+        "personal_baseline": round(personal_baseline * 100, 1),
         "insights": [
             {
                 "type": i.type,

@@ -50,6 +50,7 @@ const defaultForm: TaskFormData = {
   days_of_week: [],
   custom_interval_days: 7,
   window_days: 0,
+  effort_hours: 1.0,
 }
 
 function TemplateCard({
@@ -75,8 +76,9 @@ function TemplateCard({
       </div>
       <div className="flex items-center gap-2 mt-1">
         <span className="text-xs text-neutral-500">{PRIORITY_LABELS[tpl.priority]}</span>
+        <span className="text-xs text-neutral-400">{tpl.effort_hours}ч</span>
         {tpl.description && (
-          <span className="text-xs text-neutral-400 truncate">{tpl.description.slice(0, 60)}{tpl.description.length > 60 ? '…' : ''}</span>
+          <span className="text-xs text-neutral-400 truncate">{tpl.description.slice(0, 50)}{tpl.description.length > 50 ? '…' : ''}</span>
         )}
       </div>
     </button>
@@ -105,6 +107,7 @@ export function TaskForm({ open, onClose, task }: TaskFormProps) {
         days_of_week: task.days_of_week ?? [],
         custom_interval_days: task.custom_interval_days ?? 7,
         window_days: task.window_days ?? 0,
+        effort_hours: task.effort_hours ?? 1.0,
       })
     } else {
       setForm(defaultForm)
@@ -133,6 +136,7 @@ export function TaskForm({ open, onClose, task }: TaskFormProps) {
       days_of_week: tpl.days_of_week ?? [],
       custom_interval_days: tpl.custom_interval_days ?? 7,
       window_days: tpl.window_days ?? 0,
+      effort_hours: tpl.effort_hours,
     }))
     setShowTemplates(false)
   }
@@ -331,6 +335,26 @@ export function TaskForm({ open, onClose, task }: TaskFormProps) {
                 <span className="text-sm">{lbl}</span>
               </label>
             ))}
+          </div>
+        </div>
+
+        {/* Трудоёмкость */}
+        <div>
+          <label className="label">
+            Трудоёмкость
+            <span className="ml-1 text-xs text-neutral-400 font-normal">— примерное время выполнения</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0.1}
+              max={24}
+              step={0.1}
+              className="input w-24"
+              value={form.effort_hours}
+              onChange={e => set('effort_hours', Math.max(0.1, parseFloat(e.target.value) || 1.0))}
+            />
+            <span className="text-sm text-neutral-500">ч</span>
           </div>
         </div>
 

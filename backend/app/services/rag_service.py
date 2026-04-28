@@ -34,6 +34,7 @@ from app.models.task import Task, Priority
 from app.models.task_event import TaskEvent, EventStatus
 from app.models.member import HouseMember
 from app.models.room import Room
+from datetime import datetime
 
 
 # ---------------------------------------------------------------------------
@@ -110,15 +111,25 @@ class TfidfCorpusIndex:
         nb = math.sqrt(sum(v * v for v in vb.values()))
         return dot / (na * nb) if na > 0 and nb > 0 else 0.0
 
-    def retrieve_top_n(self, query: str, n: int = 3) -> list[tuple[float, _IndexedDoc]]:
+    def retrieve_top_n(
+        self,
+        query: str,
+        n: int = 3,
+        personalization_multipliers: Optional[dict[str, float]] = None,
+    ) -> list[tuple[float, _IndexedDoc]]:
         """
         RetrieveTopN(I, vq, N):
-        Embed query → cosine similarity → return top-N ranked fragments.
+        Embed query → cosine similarity → apply personalization multipliers → top-N.
+
+        personalization_multipliers: {advice_id: multiplier}
+          - < 1.0: down-rank (recently shown, disliked)
+          - > 1.0: up-rank (liked, room-relevant)
         """
         q_tokens = _tokenize(query)
         q_vec = self._tfidf_vec(q_tokens)
+        multipliers = personalization_multipliers or {}
         scored = [
-            (self._cosine(q_vec, doc.tfidf_vec), doc)
+            (self._cosine(q_vec, doc.tfidf_vec) * multipliers.get(doc.advice_id, 1.0), doc)
             for doc in self._docs
         ]
         scored.sort(key=lambda x: x[0], reverse=True)
@@ -234,13 +245,12 @@ def generate(
     retrieved: list[tuple[float, _IndexedDoc]],
 ) -> dict:
     """
-    Generate(P) — constrained template generation.
+    Generate(P) — constrained template generation (sync fallback).
 
     Only retrieved fragments are used as context (no hallucination beyond corpus).
     Produces: main_advice, steps, warnings.
     """
     if not retrieved or retrieved[0][0] < 0.01:
-        # No relevant fragment found — return context-only advice
         main_advice = (
             f"Для задачи «{task.title}»"
             + (f" в помещении «{room_name}»" if room_name else "")
@@ -255,14 +265,9 @@ def generate(
 
     top_score, top_doc = retrieved[0]
     top_advice = top_doc.advice
-
-    # Primary advice: top retrieved fragment content
     main_advice = top_advice.content
-
-    # Steps: from top fragment (guaranteed to be from corpus)
     steps = list(top_advice.steps or [])
 
-    # If secondary fragments add unique steps, include them (max 2 extra)
     extra_steps_added = 0
     for _, doc in retrieved[1:]:
         for step in (doc.advice.steps or []):
@@ -271,18 +276,69 @@ def generate(
                 extra_steps_added += 1
 
     warnings = _priority_warning(task.priority, history)
-
-    # Low similarity warning
     if top_score < 0.05:
         warnings.append(
             "Совет подобран по косвенным признакам — проверьте его применимость к конкретной задаче."
         )
+    return {"main_advice": main_advice, "steps": steps, "warnings": warnings}
 
-    return {
-        "main_advice": main_advice,
-        "steps": steps,
-        "warnings": warnings,
-    }
+
+async def generate_with_llm(
+    task: Task,
+    room_name: Optional[str],
+    history: HistorySummary,
+    retrieved: list[tuple[float, _IndexedDoc]],
+) -> dict:
+    """
+    Generate(P) — LLM-based generation when provider is configured.
+
+    Builds a prompt from retrieved fragments and calls the LLM.
+    Falls back to template generation if LLM returns None.
+    """
+    from app.services.llm_service import llm_generate, build_rag_prompt
+
+    template_result = generate(task, room_name, history, retrieved)
+
+    if not retrieved or retrieved[0][0] < 0.01:
+        return template_result
+
+    # Build history summary string for prompt
+    history_str = ""
+    if history.total_occurrences > 0:
+        history_str = (
+            f"выполнена {history.done_count}/{history.total_occurrences} раз, "
+            f"соблюдаемость {int(history.completion_rate * 100)}%"
+        )
+
+    fragments = [
+        f"{doc.advice.title}: {doc.advice.content}"
+        + (f" Шаги: {'; '.join(doc.advice.steps[:3])}" if doc.advice.steps else "")
+        for _, doc in retrieved
+        if score > 0.01
+        for score, doc in [(_, doc)]
+    ]
+    # Simpler fragment extraction without the walrus issue
+    fragments = []
+    for score, doc in retrieved:
+        if score > 0.01:
+            text = f"{doc.advice.title}: {doc.advice.content}"
+            if doc.advice.steps:
+                text += f" Шаги: {'; '.join(doc.advice.steps[:3])}"
+            fragments.append(text)
+
+    if not fragments:
+        return template_result
+
+    prompt = build_rag_prompt(task.title, room_name, history_str, fragments)
+    llm_text = await llm_generate(prompt, max_tokens=400)
+
+    if llm_text:
+        return {
+            "main_advice": llm_text,
+            "steps": template_result["steps"],   # keep structured steps from corpus
+            "warnings": template_result["warnings"],
+        }
+    return template_result
 
 
 def post_process(generated: dict) -> dict:
@@ -375,14 +431,52 @@ async def rag_recommend(
     )
     events: list[TaskEvent] = events_result.scalars().all()
 
+    # Load member's recent deliveries for personalization (last 14 days)
+    cutoff_dt = datetime.utcnow().replace(hour=0, minute=0, second=0) - timedelta(days=14)
+    deliveries_result = await db.execute(
+        select(AdviceDelivery).where(
+            and_(
+                AdviceDelivery.member_id == member.id,
+                AdviceDelivery.created_at >= cutoff_dt,
+            )
+        )
+    )
+    recent_deliveries: list[AdviceDelivery] = deliveries_result.scalars().all()
+
+    # Build personalization multipliers
+    # recently shown advice: down-rank by 0.6
+    # disliked (rating=-1): down-rank by 0.25
+    # liked (rating=1): up-rank by 1.5
+    # room-name match: up-rank by 1.3 (applied below on advice items)
+    multipliers: dict[str, float] = {}
+    for d in recent_deliveries:
+        for adv_id in (d.retrieved_advice_ids or []):
+            adv_id_str = str(adv_id)
+            current = multipliers.get(adv_id_str, 1.0)
+            if d.rating == -1:
+                multipliers[adv_id_str] = min(current, 0.25)
+            elif d.rating == 1:
+                multipliers[adv_id_str] = max(current, 1.5)
+            else:
+                # recently shown without explicit rating: slight down-rank
+                multipliers[adv_id_str] = min(current, 0.6)
+
+    # Room-name boost
+    if room_name:
+        room_lower = room_name.lower()
+        for a in advice_items:
+            if any(room_lower in rn.lower() for rn in (a.room_names or [])):
+                adv_id_str = str(a.id)
+                multipliers[adv_id_str] = max(multipliers.get(adv_id_str, 1.0), 1.3)
+
     # Algorithm steps
     history = build_history_summary(events, task.id)
     query = build_query(task, room_name, history)
 
     index = TfidfCorpusIndex(advice_items)
-    retrieved = index.retrieve_top_n(query, n=top_k)
+    retrieved = index.retrieve_top_n(query, n=top_k, personalization_multipliers=multipliers)
 
-    generated = generate(task, room_name, history, retrieved)
+    generated = await generate_with_llm(task, room_name, history, retrieved)
     normalized = post_process(generated)
 
     sources = [

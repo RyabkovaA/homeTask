@@ -5,11 +5,16 @@ from uuid import UUID
 from typing import Optional
 from app.core.database import get_db
 from app.models.advice import Advice
-from app.models.member import HouseMember
+from app.models.member import HouseMember, MemberRole
 from app.schemas.advice import AdviceCreate, AdviceUpdate, AdviceOut
 from app.api.v1.endpoints.auth import get_current_member
 
 router = APIRouter()
+
+
+def _require_admin(member: HouseMember) -> None:
+    if member.role != MemberRole.admin:
+        raise HTTPException(403, "Admin role required")
 
 
 @router.get("/advice", response_model=list[AdviceOut])
@@ -31,6 +36,7 @@ async def create_advice(
     db: AsyncSession = Depends(get_db),
     current_member: HouseMember = Depends(get_current_member)
 ):
+    _require_admin(current_member)
     advice = Advice(**payload.model_dump())
     db.add(advice)
     await db.commit()
@@ -45,6 +51,7 @@ async def update_advice(
     db: AsyncSession = Depends(get_db),
     current_member: HouseMember = Depends(get_current_member)
 ):
+    _require_admin(current_member)
     advice = await db.get(Advice, advice_id)
     if not advice:
         raise HTTPException(404, "Advice not found")
@@ -61,6 +68,7 @@ async def delete_advice(
     db: AsyncSession = Depends(get_db),
     current_member: HouseMember = Depends(get_current_member)
 ):
+    _require_admin(current_member)
     advice = await db.get(Advice, advice_id)
     if not advice:
         raise HTTPException(404)

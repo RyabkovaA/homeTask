@@ -1,7 +1,7 @@
 import uuid
 import enum
 from datetime import date, datetime
-from sqlalchemy import String, ForeignKey, Enum as SAEnum, Date, Integer, JSON, Boolean, DateTime, func
+from sqlalchemy import String, ForeignKey, Enum as SAEnum, Date, Integer, Float, JSON, Boolean, DateTime, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -46,6 +46,7 @@ class Task(Base):
     days_of_week: Mapped[list | None] = mapped_column(JSON, nullable=True)
     custom_interval_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     window_days: Mapped[int] = mapped_column(Integer, default=0)
+    effort_hours: Mapped[float] = mapped_column(Float, default=1.0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 

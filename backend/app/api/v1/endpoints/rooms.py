@@ -4,11 +4,16 @@ from sqlalchemy import select
 from uuid import UUID
 from app.core.database import get_db
 from app.models.room import Room
-from app.models.member import HouseMember
+from app.models.member import HouseMember, MemberRole
 from app.schemas.room import RoomCreate, RoomUpdate, RoomOut
 from app.api.v1.endpoints.auth import get_current_member
 
 router = APIRouter()
+
+
+def _require_admin(member: HouseMember) -> None:
+    if member.role != MemberRole.admin:
+        raise HTTPException(403, "Admin role required")
 
 
 @router.get("/houses/{house_id}/rooms", response_model=list[RoomOut])
@@ -28,6 +33,7 @@ async def create_room(
     db: AsyncSession = Depends(get_db),
     current_member: HouseMember = Depends(get_current_member)
 ):
+    _require_admin(current_member)
     room = Room(**payload.model_dump(), house_id=house_id)
     db.add(room)
     await db.commit()
@@ -58,6 +64,7 @@ async def delete_room(
     db: AsyncSession = Depends(get_db),
     current_member: HouseMember = Depends(get_current_member)
 ):
+    _require_admin(current_member)
     room = await db.get(Room, room_id)
     if not room:
         raise HTTPException(404)

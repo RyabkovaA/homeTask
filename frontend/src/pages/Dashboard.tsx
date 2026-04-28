@@ -1,13 +1,14 @@
 import { useMemo } from 'react'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
-import { Clock3, CalendarRange } from 'lucide-react'
+import { Clock3, CalendarRange, BellRing } from 'lucide-react'
 import { useTasks } from '../hooks/useTasks'
 import { useEvents, useCreateEvent } from '../hooks/useEvents'
 import { useAnalytics } from '../hooks/useAnalytics'
 import { useAdvice } from '../hooks/useAdvice'
 import { useRooms } from '../hooks/useRooms'
 import { useAuthStore } from '../store/authStore'
+import { useNudge } from '../hooks/useRag'
 import { TaskCard } from '../components/TaskCard'
 import { ProgressBar } from '../components/ui/ProgressBar'
 import { Spinner } from '../components/ui/Spinner'
@@ -54,6 +55,7 @@ export default function Dashboard() {
   const { data: analytics } = useAnalytics(30)
   const { data: advice = [] } = useAdvice()
   const { data: rooms = [] } = useRooms()
+  const { data: nudge } = useNudge()
   const createEvent = useCreateEvent()
 
   const todayEntries = useMemo(
@@ -205,6 +207,17 @@ export default function Dashboard() {
         </h1>
         <p className="text-sm text-neutral-500 mt-0.5">{dateLabel}</p>
       </div>
+
+      {nudge?.should_nudge && nudge.due_count > 0 && (
+        <div className={`rounded-xl px-4 py-3 flex items-start gap-3 border ${
+          nudge.is_productive_day
+            ? 'bg-forest-50 border-forest-200'
+            : 'bg-amber-50 border-amber-200'
+        }`}>
+          <BellRing size={16} className={nudge.is_productive_day ? 'text-forest-500 mt-0.5' : 'text-amber-500 mt-0.5'} />
+          <p className="text-sm text-neutral-700">{nudge.message}</p>
+        </div>
+      )}
 
       <div className="card">
         <div className="flex justify-between text-sm mb-2">

@@ -7,9 +7,10 @@ Corresponds to: SaveAdviceDelivery(u, t, A, C) in Algorithm 1.
 """
 import uuid
 from datetime import datetime
-from sqlalchemy import String, ForeignKey, JSON, DateTime, func
+from sqlalchemy import String, ForeignKey, JSON, DateTime, Integer, func
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
+from typing import Optional
 from app.core.database import Base
 
 
@@ -27,4 +28,6 @@ class AdviceDelivery(Base):
     query_text: Mapped[str] = mapped_column(String(1000))
     retrieved_advice_ids: Mapped[list] = mapped_column(JSON, default=list)   # [uuid, ...]
     result_summary: Mapped[str] = mapped_column(String(2000), default="")
+    # Feedback: 1 = like, -1 = dislike, 0 = unrated
+    rating: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

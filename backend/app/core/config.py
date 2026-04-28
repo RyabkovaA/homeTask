@@ -8,6 +8,15 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
+    # LLM provider: "none" (template fallback) | "gigachat" | "ollama"
+    LLM_PROVIDER: str = "none"
+    # GigaChat — base64(ClientId:ClientSecret) from Sberbank developer portal
+    GIGACHAT_AUTH_KEY: str = ""
+    GIGACHAT_SCOPE: str = "GIGACHAT_API_PERS"
+    # Ollama
+    OLLAMA_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "llama3.2"
+
     class Config:
         env_file = ".env"
 

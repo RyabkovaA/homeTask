@@ -17,6 +17,7 @@ class TaskCreate(BaseModel):
     days_of_week: Optional[list[int]] = None
     custom_interval_days: Optional[int] = None
     window_days: int = 0
+    effort_hours: float = Field(1.0, ge=0.1, le=24.0)
 
 
 class TaskUpdate(BaseModel):
@@ -30,6 +31,7 @@ class TaskUpdate(BaseModel):
     days_of_week: Optional[list[int]] = None
     custom_interval_days: Optional[int] = None
     window_days: Optional[int] = None
+    effort_hours: Optional[float] = Field(None, ge=0.1, le=24.0)
     is_active: Optional[bool] = None
 
 
@@ -47,6 +49,7 @@ class TaskOut(BaseModel):
     days_of_week: Optional[list[int]]
     custom_interval_days: Optional[int]
     window_days: int
+    effort_hours: float
     is_active: bool
     created_at: datetime
 

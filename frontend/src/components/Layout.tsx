@@ -1,6 +1,8 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Home, CheckSquare, BarChart2, Building2, BookOpen, LogOut, History } from 'lucide-react'
+import { Home, CheckSquare, BarChart2, Building2, BookOpen, LogOut, History, ShieldCheck } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
+import { useMembers } from '../hooks/useMembers'
+import { useMemo } from 'react'
 import toast from 'react-hot-toast'
 
 const NAV = [
@@ -13,7 +15,9 @@ const NAV = [
 ]
 
 export default function Layout() {
-  const { userName, logout } = useAuthStore()
+  const { userName, memberId, logout } = useAuthStore()
+  const { data: members = [] } = useMembers()
+  const isAdmin = useMemo(() => members.find(m => m.id === memberId)?.role === 'admin', [members, memberId])
 
   return (
     <div className="flex min-h-screen bg-beige-100">
@@ -43,6 +47,21 @@ export default function Layout() {
               {label}
             </NavLink>
           ))}
+          {isAdmin && (
+            <NavLink
+              to="/admin"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                  isActive
+                    ? 'bg-forest-400 text-white shadow-sm'
+                    : 'text-neutral-600 hover:bg-beige-200 hover:text-forest-500'
+                }`
+              }
+            >
+              <ShieldCheck size={18} />
+              Администрирование
+            </NavLink>
+          )}
         </nav>
 
         <div className="px-4 py-4 border-t border-beige-200">

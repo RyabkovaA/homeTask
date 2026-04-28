@@ -6,13 +6,16 @@
  *   - step-by-step execution list
  *   - warnings (priority-based, history-based)
  *   - source attribution (which knowledge base items were retrieved)
+ *   - feedback buttons (like / dislike → fine-tune future retrieval)
  *   - traceability: query used, delivery ID
  */
 import { useState } from 'react'
-import { Lightbulb, ChevronDown, ChevronUp, BookOpen, AlertTriangle, Info } from 'lucide-react'
+import { Lightbulb, ChevronDown, ChevronUp, BookOpen, AlertTriangle, Info, ThumbsUp, ThumbsDown } from 'lucide-react'
 import type { RagAdvice } from '../types'
 import { Badge } from './ui/Badge'
 import { Spinner } from './ui/Spinner'
+import { ragApi } from '../api/rag'
+import toast from 'react-hot-toast'
 
 interface AdvicePanelProps {
   advice: RagAdvice | null
@@ -24,6 +27,8 @@ interface AdvicePanelProps {
 export function AdvicePanel({ advice, isLoading, error, compact = false }: AdvicePanelProps) {
   const [showSteps, setShowSteps] = useState(!compact)
   const [showSources, setShowSources] = useState(false)
+  const [rating, setRating] = useState<1 | -1 | 0>(0)
+  const [ratingLoading, setRatingLoading] = useState(false)
 
   if (isLoading) {
     return (
@@ -44,14 +49,60 @@ export function AdvicePanel({ advice, isLoading, error, compact = false }: Advic
 
   if (!advice) return null
 
+  const handleRate = async (newRating: 1 | -1) => {
+    if (!advice.delivery_id || ratingLoading) return
+    const next = rating === newRating ? 0 : newRating
+    setRatingLoading(true)
+    try {
+      await ragApi.rateAdvice(advice.delivery_id, next)
+      setRating(next)
+      toast.success(next === 1 ? 'Совет отмечен полезным' : next === -1 ? 'Совет отмечен неполезным' : 'Оценка сброшена')
+    } catch {
+      toast.error('Не удалось сохранить оценку')
+    } finally {
+      setRatingLoading(false)
+    }
+  }
+
   return (
     <div className="mt-3 rounded-xl border border-forest-200 bg-forest-50/60 p-3 space-y-2 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center gap-1.5">
-        <Lightbulb size={14} className="text-forest-500 flex-shrink-0" />
-        <span className="text-xs font-semibold text-forest-600 uppercase tracking-wide">
-          Совет из базы знаний
-        </span>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Lightbulb size={14} className="text-forest-500 flex-shrink-0" />
+          <span className="text-xs font-semibold text-forest-600 uppercase tracking-wide">
+            Совет из базы знаний
+          </span>
+        </div>
+        {/* Feedback buttons */}
+        {advice.delivery_id && (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => handleRate(1)}
+              disabled={ratingLoading}
+              title="Полезный совет"
+              className={`p-1 rounded transition-colors ${
+                rating === 1
+                  ? 'text-forest-600 bg-forest-100'
+                  : 'text-neutral-400 hover:text-forest-500'
+              }`}
+            >
+              <ThumbsUp size={13} />
+            </button>
+            <button
+              onClick={() => handleRate(-1)}
+              disabled={ratingLoading}
+              title="Неполезный совет"
+              className={`p-1 rounded transition-colors ${
+                rating === -1
+                  ? 'text-red-500 bg-red-50'
+                  : 'text-neutral-400 hover:text-red-400'
+              }`}
+            >
+              <ThumbsDown size={13} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main advice */}

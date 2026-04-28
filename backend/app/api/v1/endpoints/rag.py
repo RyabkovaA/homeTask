@@ -7,9 +7,18 @@ from app.core.database import get_db
 from app.models.task import Task
 from app.models.room import Room
 from app.models.member import HouseMember
-from app.schemas.rag import RagAdviceOut, HabitInsightsOut
+from app.models.advice_delivery import AdviceDelivery
+from app.schemas.rag import (
+    RagAdviceOut, HabitInsightsOut,
+    RatePayload, RateOut,
+    TaskSuggestionsOut, SuggestedTaskItem,
+    CompletionProbabilityOut, CompletionSignals,
+    NudgeOut,
+)
 from app.services.rag_service import rag_recommend
 from app.services.habit_analysis_service import get_habit_insights
+from app.services.prediction_service import get_completion_probability, get_nudge
+from app.services.suggestion_service import suggest_tasks
 from app.api.v1.endpoints.auth import get_current_member
 
 router = APIRouter()
@@ -30,9 +39,9 @@ async def get_task_rag_advice(
 
     Generates contextual advice for a specific task occurrence using:
     - TF-IDF retrieval from knowledge base corpus
-    - Constrained template generation with retrieved fragments
-    - Execution history analysis for personalisation
-    - Saves delivery fact for traceability
+    - Personalized re-ranking (liked/disliked/recently-shown/room-boost)
+    - Optional LLM prose generation (GigaChat / Ollama)
+    - Saves delivery fact for traceability and future feedback
     """
     task = await db.get(Task, task_id)
     if not task or task.house_id != house_id:
@@ -77,9 +86,8 @@ async def get_house_habit_insights(
     """
     Habit analysis endpoint — BPMN flow.
 
-    Analyses execution journal for the house, detects behavioural patterns
-    (low room adherence, declining trend, worst weekday, chronic overdue tasks),
-    and generates RAG-based recommendations for each detected insight.
+    Uses adaptive thresholds calibrated to the member's personal 90-day baseline.
+    Returns insights ordered by severity (critical → warning → info).
     """
     result = await get_habit_insights(
         db=db,
@@ -95,6 +103,7 @@ async def get_house_habit_insights(
         streak=result["streak"],
         total_planned=result["total_planned"],
         total_done=result["total_done"],
+        personal_baseline=result.get("personal_baseline"),
         insights=[
             {
                 "type": i["type"],
@@ -120,3 +129,113 @@ async def get_house_habit_insights(
             for i in result["insights"]
         ],
     )
+
+
+@router.post(
+    "/rag/deliveries/{delivery_id}/rate",
+    response_model=RateOut,
+)
+async def rate_advice_delivery(
+    delivery_id: UUID,
+    payload: RatePayload,
+    db: AsyncSession = Depends(get_db),
+    current_member: HouseMember = Depends(get_current_member),
+):
+    """
+    Feedback loop — member rates a RAG advice delivery.
+
+    rating=1 (like) → up-rank this advice in future RAG retrievals for member
+    rating=-1 (dislike) → down-rank this advice in future retrievals
+    rating=0 → reset to neutral
+
+    This implements the feedback-loop described in thesis §2 (Feedback loop component).
+    """
+    delivery = await db.get(AdviceDelivery, delivery_id)
+    if not delivery:
+        raise HTTPException(404, "Delivery not found")
+    if delivery.member_id != current_member.id:
+        raise HTTPException(403, "Not your delivery")
+
+    delivery.rating = payload.rating
+    await db.commit()
+    return RateOut(delivery_id=str(delivery_id), rating=payload.rating)
+
+
+@router.post(
+    "/houses/{house_id}/suggest-tasks",
+    response_model=TaskSuggestionsOut,
+)
+async def suggest_house_tasks(
+    house_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_member: HouseMember = Depends(get_current_member),
+):
+    """
+    Auto-suggest new tasks based on:
+    - Seasonal patterns (rule-based fallback)
+    - Gap analysis (overdue tasks needing rescheduling)
+    - LLM generation if configured (GigaChat / Ollama)
+    """
+    from datetime import date
+    from app.services.suggestion_service import _get_season
+
+    suggestions = await suggest_tasks(
+        db=db,
+        house_id=house_id,
+        member=current_member,
+    )
+    season = _get_season()
+
+    return TaskSuggestionsOut(
+        season=season,
+        suggestions=[SuggestedTaskItem(**s) for s in suggestions],
+    )
+
+
+@router.get(
+    "/houses/{house_id}/tasks/{task_id}/completion-probability",
+    response_model=CompletionProbabilityOut,
+)
+async def get_task_completion_probability(
+    house_id: UUID,
+    task_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_member: HouseMember = Depends(get_current_member),
+):
+    """
+    Predict probability of task completion for today.
+
+    Uses weighted combination of historical signals:
+    task_rate, member_rate, weekday_rate, room_rate.
+    No external ML dependencies — pure statistical model.
+    """
+    task = await db.get(Task, task_id)
+    if not task or task.house_id != house_id:
+        raise HTTPException(404, "Task not found")
+
+    result = await get_completion_probability(db=db, task=task, member=current_member)
+    return CompletionProbabilityOut(
+        probability=result["probability"],
+        confidence=result["confidence"],
+        signals=CompletionSignals(**result["signals"]),
+        reason=result["reason"],
+    )
+
+
+@router.get(
+    "/houses/{house_id}/nudge",
+    response_model=NudgeOut,
+)
+async def get_smart_nudge(
+    house_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_member: HouseMember = Depends(get_current_member),
+):
+    """
+    Smart nudge: should the user be reminded right now?
+
+    Returns due task count, motivational message, and the member's
+    historically best-performing weekdays.
+    """
+    result = await get_nudge(db=db, house_id=house_id, member=current_member)
+    return NudgeOut(**result)
