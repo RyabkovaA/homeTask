@@ -11,7 +11,8 @@ RAG_Recommend(Task t, Member u, History H, Index I, K):
   SaveAdviceDelivery(u, t, A, C)
   return TopK(A)
 
-Retrieval: TF-IDF cosine similarity (pure Python, RFC Dense Passage Retrieval principle).
+Retrieval: sentence-transformers dense embeddings (set EMBEDDING_PROVIDER=sentence-transformers)
+           or TF-IDF cosine similarity (pure Python, default / offline fallback).
 Generation: constrained template generation — only retrieved fragments are used as context,
             format is normalised by PostProcess. Corresponds to "ограниченная генерация" in thesis.
 """
@@ -22,8 +23,8 @@ import re
 import uuid
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import date, timedelta
-from typing import Optional
+from datetime import date, datetime, timedelta
+from typing import Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -33,8 +34,15 @@ from app.models.advice_delivery import AdviceDelivery
 from app.models.task import Task, Priority
 from app.models.task_event import TaskEvent, EventStatus
 from app.models.member import HouseMember
-from app.models.room import Room
-from datetime import datetime
+
+# Optional: sentence-transformers + numpy for dense semantic retrieval.
+# Falls back to TF-IDF automatically when not installed (offline / lightweight mode).
+try:
+    from sentence_transformers import SentenceTransformer  # type: ignore[import]
+    import numpy as np  # type: ignore[import]
+    _ST_AVAILABLE = True
+except ImportError:
+    _ST_AVAILABLE = False
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +72,8 @@ class TfidfCorpusIndex:
       title + content + steps + room_names + task_keywords
     This ensures queries on any of these axes retrieve relevant fragments.
     """
+
+    min_score: float = 0.01
 
     def __init__(self, advice_items: list[Advice]) -> None:
         self._docs: list[_IndexedDoc] = []
@@ -134,6 +144,122 @@ class TfidfCorpusIndex:
         ]
         scored.sort(key=lambda x: x[0], reverse=True)
         return scored[:n]
+
+
+# ---------------------------------------------------------------------------
+# Sentence-Transformers index (optional — requires torch + sentence-transformers)
+# Dense semantic retrieval; set EMBEDDING_PROVIDER=sentence-transformers to enable.
+# ---------------------------------------------------------------------------
+
+_st_model: Optional[Any] = None
+
+
+def _get_st_model(model_name: str) -> Any:
+    """Singleton loader — model is downloaded once and kept in memory."""
+    global _st_model
+    if _st_model is None:
+        _st_model = SentenceTransformer(model_name)
+    return _st_model
+
+
+class SentenceTransformerIndex:
+    """
+    Dense semantic index using sentence-transformers embeddings.
+
+    Embeddings are L2-normalised, so cosine similarity reduces to dot product.
+    Dense scores are higher in general (even for unrelated pairs), hence the
+    higher min_score threshold compared to TF-IDF.
+
+    Same retrieve_top_n() interface as TfidfCorpusIndex.
+    """
+
+    min_score: float = 0.25
+
+    def __init__(self, advice_items: list[Advice], model_name: str) -> None:
+        model = _get_st_model(model_name)
+        self._docs: list[_IndexedDoc] = []
+        texts: list[str] = []
+        for a in advice_items:
+            text = " ".join([
+                a.title,
+                a.content,
+                " ".join(a.steps or []),
+                " ".join(a.room_names or []),
+                " ".join(a.task_keywords or []),
+            ])
+            self._docs.append(_IndexedDoc(
+                advice_id=str(a.id),
+                advice=a,
+                tokens=[],
+            ))
+            texts.append(text)
+        # encode() returns numpy array (N, D), normalize_embeddings=True → unit vectors
+        self._embeddings = model.encode(texts, normalize_embeddings=True)
+        self._model = model
+
+    def retrieve_top_n(
+        self,
+        query: str,
+        n: int = 3,
+        personalization_multipliers: Optional[dict[str, float]] = None,
+    ) -> list[tuple[float, _IndexedDoc]]:
+        """
+        RetrieveTopN: encode query → dot product with corpus matrix → top-N.
+        Dot product of L2-normalised vectors equals cosine similarity.
+        """
+        q_emb = self._model.encode([query], normalize_embeddings=True)[0]
+        # (N, D) @ (D,) → (N,)
+        scores = (self._embeddings @ q_emb).tolist()
+        multipliers = personalization_multipliers or {}
+        scored = [
+            (float(score) * multipliers.get(doc.advice_id, 1.0), doc)
+            for score, doc in zip(scores, self._docs)
+        ]
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return scored[:n]
+
+
+# ---------------------------------------------------------------------------
+# Corpus index cache — rebuilt only when the advice set changes
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _CorpusCache:
+    advice_ids: frozenset
+    index: Any  # TfidfCorpusIndex | SentenceTransformerIndex
+
+
+_corpus_cache: Optional[_CorpusCache] = None
+
+
+def _get_corpus_index(advice_items: list[Advice]) -> Any:
+    """
+    Return a cached corpus index, rebuilding only when the advice set changes.
+
+    Provider (EMBEDDING_PROVIDER env var):
+      "sentence-transformers" → SentenceTransformerIndex (requires torch)
+      "tfidf" (default)       → TfidfCorpusIndex (pure Python, always available)
+
+    Falls back to TF-IDF silently if sentence-transformers fails to initialise.
+    """
+    global _corpus_cache
+    from app.core.config import settings
+
+    current_ids = frozenset(str(a.id) for a in advice_items)
+    if _corpus_cache is not None and _corpus_cache.advice_ids == current_ids:
+        return _corpus_cache.index
+
+    index: Any
+    if settings.EMBEDDING_PROVIDER == "sentence-transformers" and _ST_AVAILABLE:
+        try:
+            index = SentenceTransformerIndex(advice_items, settings.EMBEDDING_MODEL)
+        except Exception:
+            index = TfidfCorpusIndex(advice_items)
+    else:
+        index = TfidfCorpusIndex(advice_items)
+
+    _corpus_cache = _CorpusCache(advice_ids=current_ids, index=index)
+    return _corpus_cache.index
 
 
 # ---------------------------------------------------------------------------
@@ -243,6 +369,7 @@ def generate(
     room_name: Optional[str],
     history: HistorySummary,
     retrieved: list[tuple[float, _IndexedDoc]],
+    min_score: float = 0.01,
 ) -> dict:
     """
     Generate(P) — constrained template generation (sync fallback).
@@ -250,7 +377,7 @@ def generate(
     Only retrieved fragments are used as context (no hallucination beyond corpus).
     Produces: main_advice, steps, warnings.
     """
-    if not retrieved or retrieved[0][0] < 0.01:
+    if not retrieved or retrieved[0][0] < min_score:
         main_advice = (
             f"Для задачи «{task.title}»"
             + (f" в помещении «{room_name}»" if room_name else "")
@@ -276,7 +403,7 @@ def generate(
                 extra_steps_added += 1
 
     warnings = _priority_warning(task.priority, history)
-    if top_score < 0.05:
+    if top_score < min_score * 5:
         warnings.append(
             "Совет подобран по косвенным признакам — проверьте его применимость к конкретной задаче."
         )
@@ -288,6 +415,7 @@ async def generate_with_llm(
     room_name: Optional[str],
     history: HistorySummary,
     retrieved: list[tuple[float, _IndexedDoc]],
+    min_score: float = 0.01,
 ) -> dict:
     """
     Generate(P) — LLM-based generation when provider is configured.
@@ -297,12 +425,11 @@ async def generate_with_llm(
     """
     from app.services.llm_service import llm_generate, build_rag_prompt
 
-    template_result = generate(task, room_name, history, retrieved)
+    template_result = generate(task, room_name, history, retrieved, min_score)
 
-    if not retrieved or retrieved[0][0] < 0.01:
+    if not retrieved or retrieved[0][0] < min_score:
         return template_result
 
-    # Build history summary string for prompt
     history_str = ""
     if history.total_occurrences > 0:
         history_str = (
@@ -310,17 +437,9 @@ async def generate_with_llm(
             f"соблюдаемость {int(history.completion_rate * 100)}%"
         )
 
-    fragments = [
-        f"{doc.advice.title}: {doc.advice.content}"
-        + (f" Шаги: {'; '.join(doc.advice.steps[:3])}" if doc.advice.steps else "")
-        for _, doc in retrieved
-        if score > 0.01
-        for score, doc in [(_, doc)]
-    ]
-    # Simpler fragment extraction without the walrus issue
     fragments = []
     for score, doc in retrieved:
-        if score > 0.01:
+        if score >= min_score:
             text = f"{doc.advice.title}: {doc.advice.content}"
             if doc.advice.steps:
                 text += f" Шаги: {'; '.join(doc.advice.steps[:3])}"
@@ -335,7 +454,7 @@ async def generate_with_llm(
     if llm_text:
         return {
             "main_advice": llm_text,
-            "steps": template_result["steps"],   # keep structured steps from corpus
+            "steps": template_result["steps"],
             "warnings": template_result["warnings"],
         }
     return template_result
@@ -346,18 +465,17 @@ def post_process(generated: dict) -> dict:
     PostProcess(r) — normalize: remove duplicates, ensure brevity, clean empty items.
     """
     steps = [s.strip() for s in generated.get("steps", []) if s.strip()]
-    warnings = list(dict.fromkeys(  # preserve order, deduplicate
+    warnings = list(dict.fromkeys(
         w.strip() for w in generated.get("warnings", []) if w.strip()
     ))
     main_advice = (generated.get("main_advice") or "").strip()
-    # Truncate main advice at 600 chars
     if len(main_advice) > 600:
         main_advice = main_advice[:597] + "..."
 
     return {
         "main_advice": main_advice,
-        "steps": steps[:8],      # max 8 steps
-        "warnings": warnings[:4],  # max 4 warnings
+        "steps": steps[:8],
+        "warnings": warnings[:4],
     }
 
 
@@ -407,7 +525,6 @@ async def rag_recommend(
 
     Returns dict with keys: main_advice, steps, warnings, sources, delivery_id.
     """
-    # Load all active advice for corpus index
     result = await db.execute(select(Advice).where(Advice.is_active == True))
     advice_items: list[Advice] = result.scalars().all()
 
@@ -420,7 +537,6 @@ async def rag_recommend(
             "delivery_id": None,
         }
 
-    # Load recent events for history summary
     events_result = await db.execute(
         select(TaskEvent).where(
             and_(
@@ -431,7 +547,6 @@ async def rag_recommend(
     )
     events: list[TaskEvent] = events_result.scalars().all()
 
-    # Load member's recent deliveries for personalization (last 14 days)
     cutoff_dt = datetime.utcnow().replace(hour=0, minute=0, second=0) - timedelta(days=14)
     deliveries_result = await db.execute(
         select(AdviceDelivery).where(
@@ -443,11 +558,10 @@ async def rag_recommend(
     )
     recent_deliveries: list[AdviceDelivery] = deliveries_result.scalars().all()
 
-    # Build personalization multipliers
+    # Personalization multipliers
     # recently shown advice: down-rank by 0.6
     # disliked (rating=-1): down-rank by 0.25
     # liked (rating=1): up-rank by 1.5
-    # room-name match: up-rank by 1.3 (applied below on advice items)
     multipliers: dict[str, float] = {}
     for d in recent_deliveries:
         for adv_id in (d.retrieved_advice_ids or []):
@@ -458,10 +572,8 @@ async def rag_recommend(
             elif d.rating == 1:
                 multipliers[adv_id_str] = max(current, 1.5)
             else:
-                # recently shown without explicit rating: slight down-rank
                 multipliers[adv_id_str] = min(current, 0.6)
 
-    # Room-name boost
     if room_name:
         room_lower = room_name.lower()
         for a in advice_items:
@@ -469,14 +581,13 @@ async def rag_recommend(
                 adv_id_str = str(a.id)
                 multipliers[adv_id_str] = max(multipliers.get(adv_id_str, 1.0), 1.3)
 
-    # Algorithm steps
     history = build_history_summary(events, task.id)
     query = build_query(task, room_name, history)
 
-    index = TfidfCorpusIndex(advice_items)
+    index = _get_corpus_index(advice_items)
     retrieved = index.retrieve_top_n(query, n=top_k, personalization_multipliers=multipliers)
 
-    generated = await generate_with_llm(task, room_name, history, retrieved)
+    generated = await generate_with_llm(task, room_name, history, retrieved, index.min_score)
     normalized = post_process(generated)
 
     sources = [
@@ -529,18 +640,19 @@ async def rag_recommend_by_query(
     if not advice_items:
         return {"main_advice": "", "steps": [], "warnings": [], "sources": [], "delivery_id": None}
 
-    index = TfidfCorpusIndex(advice_items)
+    index = _get_corpus_index(advice_items)
     retrieved = index.retrieve_top_n(query_text, n=top_k)
 
-    if not retrieved or retrieved[0][0] < 0.01:
+    if not retrieved or retrieved[0][0] < index.min_score:
         main_advice = "По данной теме в базе знаний не найдено релевантных советов."
-        steps, warnings = [], []
+        steps: list[str] = []
+        warnings: list[str] = []
     else:
         top_score, top_doc = retrieved[0]
         main_advice = top_doc.advice.content
         steps = list(top_doc.advice.steps or [])
         warnings = []
-        if top_score < 0.05:
+        if top_score < index.min_score * 5:
             warnings.append("Совет подобран по косвенным признакам — проверьте применимость.")
 
     sources = [

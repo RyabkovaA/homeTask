@@ -25,6 +25,7 @@ export interface Member {
   user_id: string
   role: MemberRole
   color: string
+  allowed_room_ids: string[]
   user?: User
 }
 

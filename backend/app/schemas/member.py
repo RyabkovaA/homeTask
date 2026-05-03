@@ -14,6 +14,7 @@ class MemberCreate(BaseModel):
 class MemberUpdate(BaseModel):
     role: Optional[MemberRole] = None
     color: Optional[str] = None
+    allowed_room_ids: Optional[list[UUID]] = None
 
 
 class MemberOut(BaseModel):
@@ -22,6 +23,7 @@ class MemberOut(BaseModel):
     user_id: UUID
     role: MemberRole
     color: str
+    allowed_room_ids: list[UUID] = Field(default_factory=list)
     user: Optional[UserOut] = None
 
     model_config = {"from_attributes": True}

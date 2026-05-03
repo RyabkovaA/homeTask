@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from uuid import UUID
 from app.core.database import get_db
 from app.core.security import verify_password, hash_password, create_access_token, decode_token
 from app.models.user import User
@@ -143,4 +144,23 @@ async def get_current_member(
     member = result.scalar_one_or_none()
     if not member:
         raise HTTPException(403, "Not a member of any house")
+    return member
+
+
+async def get_house_member(
+    house_id: UUID,
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db)
+) -> HouseMember:
+    """Verify current user is a member of the specified house and return their membership."""
+    user = await get_current_user(token, db)
+    result = await db.execute(
+        select(HouseMember).where(
+            HouseMember.user_id == user.id,
+            HouseMember.house_id == house_id,
+        )
+    )
+    member = result.scalar_one_or_none()
+    if not member:
+        raise HTTPException(403, "Not a member of this house")
     return member

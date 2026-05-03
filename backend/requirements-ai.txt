@@ -1,0 +1,18 @@
+# Optional AI dependencies — install to enable dense semantic retrieval and LLM generation.
+# Usage: pip install -r requirements-ai.txt
+#
+# After installing, set environment variables:
+#   EMBEDDING_PROVIDER=sentence-transformers   (enables dense RAG)
+#   LLM_PROVIDER=gigachat|ollama               (enables LLM generation)
+#
+# The model (~90 MB) is downloaded automatically on first startup and cached in
+# ~/.cache/torch/sentence_transformers/
+
+# Dense semantic embeddings (replaces TF-IDF)
+sentence-transformers==3.0.1
+# torch is a transitive dependency of sentence-transformers;
+# install the CPU-only build to keep image size manageable (~1.2 GB vs ~3.5 GB GPU)
+torch==2.3.1+cpu --index-url https://download.pytorch.org/whl/cpu
+
+# numpy is required for matrix operations in SentenceTransformerIndex
+numpy==1.26.4

@@ -85,12 +85,17 @@ async def update_member(
     db: AsyncSession = Depends(get_db),
     current_member: HouseMember = Depends(get_current_member)
 ):
-    if payload.role is not None:
+    if payload.role is not None or payload.allowed_room_ids is not None:
         _require_admin(current_member)
     member = await db.get(HouseMember, member_id)
     if not member:
         raise HTTPException(404, "Member not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    if member.house_id != current_member.house_id:
+        raise HTTPException(403, "Member does not belong to your house")
+    data = payload.model_dump(exclude_unset=True)
+    if "allowed_room_ids" in data and data["allowed_room_ids"] is not None:
+        data["allowed_room_ids"] = [str(r) for r in data["allowed_room_ids"]]
+    for field, value in data.items():
         setattr(member, field, value)
     await db.commit()
     await db.refresh(member)

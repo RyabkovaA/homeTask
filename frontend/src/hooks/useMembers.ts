@@ -26,7 +26,7 @@ export function useUpdateMember() {
   const qc = useQueryClient()
   const houseId = useAuthStore(s => s.houseId)
   return useMutation({
-    mutationFn: ({ memberId, data }: { memberId: string; data: { role?: MemberRole; color?: string } }) =>
+    mutationFn: ({ memberId, data }: { memberId: string; data: { role?: MemberRole; color?: string; allowed_room_ids?: string[] } }) =>
       membersApi.update(memberId, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['members', houseId] })
   })

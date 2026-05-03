@@ -156,6 +156,7 @@ function MembersTab() {
   const houseId = useAuthStore(s => s.houseId)!
   const memberId = useAuthStore(s => s.memberId)!
   const { data: members = [], isLoading } = useMembers()
+  const { data: rooms = [] } = useRooms()
   const invite = useInviteMember()
   const updateMember = useUpdateMember()
   const removeMember = useRemoveMember()
@@ -171,6 +172,14 @@ function MembersTab() {
     } catch (e: any) {
       toast.error(e?.response?.data?.detail ?? 'Ошибка приглашения')
     }
+  }
+
+  const toggleAllowedRoom = (m: typeof members[number], roomId: string) => {
+    const current = m.allowed_room_ids ?? []
+    const next = current.includes(roomId)
+      ? current.filter(id => id !== roomId)
+      : [...current, roomId]
+    updateMember.mutate({ memberId: m.id, data: { allowed_room_ids: next } })
   }
 
   if (isLoading) return <div className="flex justify-center py-10"><Spinner className="w-6 h-6" /></div>
@@ -191,31 +200,62 @@ function MembersTab() {
 
       <div className="space-y-2 max-w-lg">
         {members.map(m => (
-          <div key={m.id} className="card flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0" style={{ background: m.color }}>
-              {m.user?.name?.[0] ?? '?'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{m.user?.name ?? '—'}</p>
-              <p className="text-xs text-neutral-400 truncate">{m.user?.email}</p>
-            </div>
-            <select
-              className="input w-36 text-xs py-1"
-              value={m.role}
-              onChange={e => updateMember.mutate({ memberId: m.id, data: { role: e.target.value as MemberRole } })}
-              disabled={m.id === memberId}
-            >
-              {(['admin', 'member', 'limited'] as MemberRole[]).map(r => (
-                <option key={r} value={r}>{ROLE_LABELS[r]}</option>
-              ))}
-            </select>
-            {m.id !== memberId && (
-              <button
-                onClick={() => { if (confirm(`Удалить «${m.user?.name}» из дома?`)) removeMember.mutate(m.id) }}
-                className="w-7 h-7 rounded-lg bg-red-100 text-red-500 hover:bg-red-200 flex items-center justify-center flex-shrink-0"
+          <div key={m.id} className="card space-y-2">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0" style={{ background: m.color }}>
+                {m.user?.name?.[0] ?? '?'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{m.user?.name ?? '—'}</p>
+                <p className="text-xs text-neutral-400 truncate">{m.user?.email}</p>
+              </div>
+              <select
+                className="input w-36 text-xs py-1"
+                value={m.role}
+                onChange={e => updateMember.mutate({ memberId: m.id, data: { role: e.target.value as MemberRole } })}
+                disabled={m.id === memberId}
               >
-                <Trash2 size={13} />
-              </button>
+                {(['admin', 'member', 'limited'] as MemberRole[]).map(r => (
+                  <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                ))}
+              </select>
+              {m.id !== memberId && (
+                <button
+                  onClick={() => { if (confirm(`Удалить «${m.user?.name}» из дома?`)) removeMember.mutate(m.id) }}
+                  className="w-7 h-7 rounded-lg bg-red-100 text-red-500 hover:bg-red-200 flex items-center justify-center flex-shrink-0"
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </div>
+
+            {m.role === 'limited' && rooms.length > 0 && (
+              <div className="pt-1 border-t border-beige-200">
+                <p className="text-xs text-neutral-500 mb-1.5">Доступные комнаты:</p>
+                <div className="flex flex-wrap gap-1">
+                  {rooms.map(room => {
+                    const allowed = (m.allowed_room_ids ?? []).includes(room.id)
+                    return (
+                      <button
+                        key={room.id}
+                        onClick={() => toggleAllowedRoom(m, room.id)}
+                        disabled={m.id === memberId}
+                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all ${
+                          allowed
+                            ? 'bg-forest-100 text-forest-700 border border-forest-300'
+                            : 'bg-beige-100 text-neutral-400 border border-beige-200 hover:bg-beige-200'
+                        }`}
+                      >
+                        {room.icon} {room.name}
+                        {allowed && <Check size={10} />}
+                      </button>
+                    )
+                  })}
+                </div>
+                {(m.allowed_room_ids ?? []).length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">Нет доступа ни к одной комнате</p>
+                )}
+              </div>
             )}
           </div>
         ))}

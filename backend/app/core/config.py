@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     OLLAMA_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.2"
 
+    # Embedding provider: "tfidf" (default, pure Python) | "sentence-transformers"
+    # Set to "sentence-transformers" after installing requirements-ai.txt
+    EMBEDDING_PROVIDER: str = "tfidf"
+    EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+
     class Config:
         env_file = ".env"
 

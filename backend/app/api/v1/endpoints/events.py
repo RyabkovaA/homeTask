@@ -7,11 +7,11 @@ from typing import Optional
 from app.core.database import get_db
 from app.models.task_event import TaskEvent, EventStatus
 from app.models.task import Task
-from app.models.member import HouseMember
+from app.models.member import HouseMember, MemberRole
 from app.models.room import Room
 from app.models.user import User
 from app.schemas.task_event import EventCreate, EventOut, EventHistoryOut
-from app.api.v1.endpoints.auth import get_current_member
+from app.api.v1.endpoints.auth import get_current_member, get_house_member
 
 router = APIRouter()
 
@@ -22,6 +22,14 @@ async def create_event(
     db: AsyncSession = Depends(get_db),
     current_member: HouseMember = Depends(get_current_member)
 ):
+    task = await db.get(Task, payload.task_id)
+    if not task or task.house_id != current_member.house_id:
+        raise HTTPException(403, "Task does not belong to your house")
+
+    if current_member.role == MemberRole.limited and current_member.allowed_room_ids:
+        if str(task.room_id) not in [str(r) for r in current_member.allowed_room_ids]:
+            raise HTTPException(403, "Limited members can only act on tasks in their assigned rooms")
+
     existing = await db.execute(
         select(TaskEvent).where(
             and_(
@@ -48,7 +56,7 @@ async def list_events(
     status: Optional[EventStatus] = None,
     room_id: Optional[UUID] = None,
     db: AsyncSession = Depends(get_db),
-    current_member: HouseMember = Depends(get_current_member)
+    current_member: HouseMember = Depends(get_house_member)
 ):
     q = (
         select(TaskEvent, Task, Room, HouseMember, User)
@@ -67,6 +75,11 @@ async def list_events(
         q = q.where(TaskEvent.status == status)
     if room_id:
         q = q.where(Task.room_id == room_id)
+
+    if current_member.role == MemberRole.limited:
+        if not current_member.allowed_room_ids:
+            return []
+        q = q.where(Task.room_id.in_(current_member.allowed_room_ids))
 
     result = await db.execute(
         q.order_by(TaskEvent.created_at.desc(), TaskEvent.occurrence_date.desc())

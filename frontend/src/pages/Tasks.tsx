@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react'
-import { Plus, Search, Pencil, Trash2, Check, ArrowRight, Lightbulb, Sparkles, X } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Check, ArrowRight, Lightbulb, Sparkles, X, User } from 'lucide-react'
 import { useTasks, useDeleteTask } from '../hooks/useTasks'
 import { useRooms } from '../hooks/useRooms'
 import { useMembers } from '../hooks/useMembers'
 import { useCreateEvent, useEvents } from '../hooks/useEvents'
 import { useTaskRagAdvice, useSuggestTasks } from '../hooks/useRag'
+import { useAuthStore } from '../store/authStore'
 import { TaskForm } from '../components/TaskForm'
 import { AdvicePanel } from '../components/AdvicePanel'
 import { Badge } from '../components/ui/Badge'
@@ -41,10 +42,12 @@ function addDays(dateStr: string, days: number) {
 export default function Tasks() {
   const today = new Date().toISOString().slice(0, 10)
   const monthAgo = addDays(today, -30)
+  const currentMemberId = useAuthStore(s => s.memberId)
 
   const [search, setSearch] = useState('')
   const [roomFilter, setRoomFilter] = useState('')
   const [priorityFilter, setPriorityFilter] = useState<Priority | ''>('')
+  const [onlyMine, setOnlyMine] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
   const [editTask, setEditTask] = useState<Task | null>(null)
   const [moveTaskId, setMoveTaskId] = useState<string | null>(null)
@@ -95,6 +98,7 @@ export default function Tasks() {
       if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false
       if (roomFilter && t.room_id !== roomFilter) return false
       if (priorityFilter && t.priority !== priorityFilter) return false
+      if (onlyMine && t.assignee_id !== currentMemberId) return false
       return true
     })
     // Completed tasks go to the bottom
@@ -228,6 +232,17 @@ export default function Tasks() {
             </button>
           ))}
         </div>
+
+        <button
+          onClick={() => setOnlyMine(v => !v)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            onlyMine ? 'bg-forest-400 text-white' : 'bg-beige-200 text-neutral-600 hover:bg-beige-300'
+          }`}
+          title="Показать только задачи, назначенные мне"
+        >
+          <User size={13} />
+          Только мои
+        </button>
       </div>
 
       {isLoading ? (
