@@ -10,4 +10,7 @@ export const housesApi = {
 
   create: (data: { name: string }) =>
     client.post<House>('/houses', data).then(r => r.data),
+
+  join: (inviteCode: string) =>
+    client.post<House>('/houses/join', { invite_code: inviteCode }).then(r => r.data),
 }

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from uuid import UUID
@@ -8,6 +8,7 @@ from app.models.member import HouseMember, MemberRole
 from app.schemas.task import TaskCreate, TaskUpdate, TaskOut
 from app.api.v1.endpoints.auth import get_house_member, get_current_member
 from app.services.recurrence_service import build_rrule
+from app.services import push_service
 
 router = APIRouter()
 
@@ -56,6 +57,7 @@ async def create_task(
 async def update_task(
     task_id: UUID,
     payload: TaskUpdate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_member: HouseMember = Depends(get_current_member)
 ):
@@ -65,10 +67,23 @@ async def update_task(
         raise HTTPException(404, "Task not found")
     if task.house_id != current_member.house_id:
         raise HTTPException(403, "Task does not belong to your house")
+
+    old_assignee_id = task.assignee_id
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(task, field, value)
     await db.commit()
     await db.refresh(task)
+
+    # Notify newly assigned member (skip if assigning to yourself)
+    new_assignee_id = task.assignee_id
+    if (
+        "assignee_id" in payload.model_dump(exclude_unset=True)
+        and new_assignee_id
+        and new_assignee_id != old_assignee_id
+        and new_assignee_id != current_member.id
+    ):
+        background_tasks.add_task(push_service.notify_task_assigned, new_assignee_id, task.title)
+
     return task
 
 

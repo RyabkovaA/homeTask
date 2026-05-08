@@ -8,8 +8,8 @@ from app.core.database import get_db
 from app.models.house import House
 from app.models.member import HouseMember, MemberRole
 from app.models.user import User
-from app.schemas.house import HouseCreate, HouseUpdate, HouseOut
-from app.api.v1.endpoints.auth import get_current_user, oauth2_scheme
+from app.schemas.house import HouseCreate, HouseUpdate, HouseOut, JoinHousePayload
+from app.api.v1.endpoints.auth import get_current_user, get_current_member, oauth2_scheme
 
 router = APIRouter()
 
@@ -27,6 +27,38 @@ async def create_house(
     await db.flush()
 
     member = HouseMember(house_id=house.id, user_id=user.id, role=MemberRole.admin)
+    db.add(member)
+    await db.commit()
+    await db.refresh(house)
+    return house
+
+
+@router.post("/houses/join", response_model=HouseOut)
+async def join_house(
+    payload: JoinHousePayload,
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+):
+    """Join an existing house by invite code. Caller gets role 'member'."""
+    user: User = await get_current_user(token, db)
+
+    result = await db.execute(
+        select(House).where(House.invite_code == payload.invite_code.upper())
+    )
+    house = result.scalar_one_or_none()
+    if not house:
+        raise HTTPException(404, "Invalid invite code")
+
+    existing = await db.execute(
+        select(HouseMember).where(
+            HouseMember.house_id == house.id,
+            HouseMember.user_id == user.id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(400, "Already a member of this house")
+
+    member = HouseMember(house_id=house.id, user_id=user.id, role=MemberRole.member)
     db.add(member)
     await db.commit()
     await db.refresh(house)

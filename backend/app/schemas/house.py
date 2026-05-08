@@ -15,6 +15,11 @@ class HouseUpdate(BaseModel):
 class HouseOut(BaseModel):
     id: UUID
     name: str
+    invite_code: str
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class JoinHousePayload(BaseModel):
+    invite_code: str = Field(..., min_length=8, max_length=8)

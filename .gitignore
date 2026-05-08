@@ -13,13 +13,16 @@ Thumbs.db
 # =========================
 PROJECT_STATE.md
 desc.md
-
+TEST_REPORT.md
+TESTING_REPORT.md
+Рябкова_1,2.pdf
 # =========================
 # Environment / secrets
 # =========================
 .env
 .env.*
 !.env.example
+
 
 # =========================
 # Logs

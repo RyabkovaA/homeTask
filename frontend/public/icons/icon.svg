@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="80" fill="#4A7C59"/>
+  <!-- roof -->
+  <polygon points="256,68 72,230 440,230" fill="#FDFAF4"/>
+  <!-- walls -->
+  <rect x="96" y="218" width="320" height="206" rx="8" fill="#FDFAF4"/>
+  <!-- door -->
+  <rect x="188" y="302" width="136" height="122" rx="10" fill="#4A7C59"/>
+  <!-- checkmark on door -->
+  <polyline points="208,364 242,398 308,318" fill="none" stroke="#FDFAF4" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- left window -->
+  <rect x="118" y="248" width="60" height="52" rx="6" fill="#3A6449"/>
+  <!-- right window -->
+  <rect x="334" y="248" width="60" height="52" rx="6" fill="#3A6449"/>
+</svg>

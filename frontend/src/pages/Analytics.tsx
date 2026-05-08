@@ -4,7 +4,7 @@ import {
   PieChart, Pie, Cell,
   BarChart, Bar, LabelList,
 } from 'recharts'
-import { AlertTriangle, Info, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { AlertTriangle, Info, CheckCircle, ChevronDown, ChevronUp, BarChart2 } from 'lucide-react'
 import { useAnalytics } from '../hooks/useAnalytics'
 import { useHabitInsights } from '../hooks/useRag'
 import { StatCard } from '../components/StatCard'
@@ -177,6 +177,7 @@ export default function Analytics() {
   if (!data) return null
 
   const { metrics, daily_trend, load_distribution, room_stats } = data
+  const hasData = metrics.total_planned > 0
 
   return (
     <div className="space-y-6">
@@ -197,8 +198,17 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* Key metrics + consistency ring */}
-      <div className="card">
+      {!hasData && (
+        <div className="card flex flex-col items-center gap-3 py-10 text-center">
+          <BarChart2 size={40} className="text-beige-400" />
+          <p className="font-display text-lg text-neutral-600">Пока недостаточно данных</p>
+          <p className="text-sm text-neutral-400 max-w-xs">
+            Создайте задачи и отмечайте их выполнение — аналитика появится за выбранный период.
+          </p>
+        </div>
+      )}
+
+      {hasData && <><div className="card">
         <div className="flex flex-wrap gap-4 items-center justify-between">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-1">
             <StatCard label="Соблюдение" value={metrics.adherence_rate} unit="%" icon="📊" />
@@ -379,6 +389,7 @@ export default function Analytics() {
           </div>
         </div>
       </div>
+      </>}
     </div>
   )
 }

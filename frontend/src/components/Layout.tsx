@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Home, CheckSquare, BarChart2, Building2, BookOpen, LogOut, History, ShieldCheck } from 'lucide-react'
+import { Home, CheckSquare, BarChart2, Building2, BookOpen, LogOut, History, ShieldCheck, User } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { useMembers } from '../hooks/useMembers'
 import { useMemo } from 'react'
@@ -106,19 +106,19 @@ export default function Layout() {
         </div>
 
         <nav className="md:hidden fixed bottom-0 inset-x-0 bg-beige-50 border-t border-beige-200 flex justify-around py-2 z-20">
-          {NAV.slice(0, 5).map(({ to, icon: Icon, label }) => (
+          {[...NAV, { to: '/profile', icon: User, label: 'Профиль' }].map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
               end={to === '/'}
               className={({ isActive }) =>
-                `flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg text-xs transition-colors ${
+                `flex flex-col items-center gap-0.5 px-1.5 py-1 rounded-lg text-xs transition-colors ${
                   isActive ? 'text-forest-400 font-semibold' : 'text-neutral-400'
                 }`
               }
             >
-              <Icon size={20} />
-              {label}
+              <Icon size={18} />
+              <span className="leading-none">{label}</span>
             </NavLink>
           ))}
         </nav>

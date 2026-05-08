@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -22,8 +22,17 @@ class Settings(BaseSettings):
     EMBEDDING_PROVIDER: str = "tfidf"
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
 
-    class Config:
-        env_file = ".env"
+    # VAPID keys for Web Push notifications (run scripts/generate_vapid.py to create)
+    # VAPID_PRIVATE_KEY: base64-encoded PEM private key
+    # VAPID_PUBLIC_KEY: base64url uncompressed EC public key (sent to browser)
+    VAPID_PRIVATE_KEY: str = ""
+    VAPID_PUBLIC_KEY: str = ""
+    VAPID_CLAIM_EMAIL: str = "admin@hometask.local"
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",   # silently ignore unknown env vars (client_id, client_secret, etc.)
+    )
 
 
 settings = Settings()

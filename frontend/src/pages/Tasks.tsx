@@ -60,6 +60,7 @@ export default function Tasks() {
   const [suggestOpen, setSuggestOpen] = useState(false)
   const [suggestions, setSuggestions] = useState<SuggestedTask[]>([])
   const [suggestSeason, setSuggestSeason] = useState('')
+  const [prefillTitle, setPrefillTitle] = useState<string | undefined>(undefined)
 
   const { data: tasks = [], isLoading } = useTasks()
   const { data: rooms = [] } = useRooms()
@@ -93,26 +94,28 @@ export default function Tasks() {
     [recentEvents]
   )
 
-  const filtered = useMemo(() => {
+  const doneToday = useMemo(() => new Set(
+    todayDueEntries
+      .filter(e => occurrenceStatusMap.get(`${e.task.id}_${today}`) === 'done')
+      .map(e => e.task.id)
+  ), [todayDueEntries, occurrenceStatusMap, today])
+
+  const sortByDone = (list: Task[]) =>
+    [...list].sort((a, b) => (doneToday.has(a.id) ? 1 : 0) - (doneToday.has(b.id) ? 1 : 0))
+
+  const { myTasks, canDoTasks } = useMemo(() => {
     const base = tasks.filter(t => {
       if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false
       if (roomFilter && t.room_id !== roomFilter) return false
       if (priorityFilter && t.priority !== priorityFilter) return false
-      if (onlyMine && t.assignee_id !== currentMemberId) return false
       return true
     })
-    // Completed tasks go to the bottom
-    const doneToday = new Set(
-      todayDueEntries
-        .filter(e => occurrenceStatusMap.get(`${e.task.id}_${today}`) === 'done')
-        .map(e => e.task.id)
-    )
-    return [...base].sort((a, b) => {
-      const aDone = doneToday.has(a.id) ? 1 : 0
-      const bDone = doneToday.has(b.id) ? 1 : 0
-      return aDone - bDone
-    })
-  }, [tasks, search, roomFilter, priorityFilter, todayDueEntries, occurrenceStatusMap, today])
+    // My tasks: no assignee OR assigned to me
+    const my = base.filter(t => !t.assignee_id || t.assignee_id === currentMemberId)
+    // Can-do: assigned to someone else
+    const canDo = onlyMine ? [] : base.filter(t => t.assignee_id && t.assignee_id !== currentMemberId)
+    return { myTasks: sortByDone(my), canDoTasks: sortByDone(canDo) }
+  }, [tasks, search, roomFilter, priorityFilter, onlyMine, currentMemberId, doneToday])
 
   const handleDelete = async (task: Task) => {
     if (!confirm(`Удалить "${task.title}"?`)) return
@@ -189,6 +192,102 @@ export default function Tasks() {
     }
   }
 
+  const renderTask = (task: Task) => {
+    const room = task.room_id ? roomMap.get(task.room_id) : undefined
+    const assignee = task.assignee_id ? memberMap.get(task.assignee_id) : undefined
+    const dueInfo = todayDueMap.get(task.id)
+    const todayStatus = occurrenceStatusMap.get(`${task.id}_${today}`)
+    const canActToday = !!dueInfo && todayStatus !== 'done' && todayStatus !== 'skipped' && todayStatus !== 'moved'
+    const adviceOpen = adviceOpenId === task.id
+    const adviceLoading = adviceLoadingId === task.id
+    const adviceError = adviceErrorId === task.id
+
+    return (
+      <div key={task.id} className="card hover:shadow-hover transition-shadow">
+        <div className="flex items-center gap-4">
+          <div className="flex-1 min-w-0">
+            <p className={`font-medium text-sm truncate ${todayStatus === 'done' ? 'line-through text-neutral-400' : 'text-neutral-800'}`}>
+              {task.title}
+            </p>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              {room && <span className="text-xs text-neutral-500">{room.icon} {room.name}</span>}
+              <Badge variant={PRIORITY_VARIANTS[task.priority]}>{PRIORITY_LABELS[task.priority]}</Badge>
+              <span className="text-xs text-neutral-400">{buildRRuleDescription(task)}</span>
+              {assignee && <span className="text-xs text-neutral-400">{assignee.user?.name ?? 'N/A'}</span>}
+              {todayStatus === 'done' && <Badge variant="success">Выполнено сегодня</Badge>}
+              {todayStatus === 'moved' && <Badge variant="info">Перенесено</Badge>}
+              {!todayStatus && dueInfo && <Badge variant="warning">Актуально на сегодня</Badge>}
+            </div>
+          </div>
+
+          <div className="flex gap-1 flex-shrink-0">
+            <button
+              onClick={() => handleToggleAdvice(task)}
+              disabled={adviceLoading}
+              title="Получить совет из базы знаний"
+              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50 ${
+                adviceOpen ? 'bg-forest-200 text-forest-700' : 'bg-beige-100 hover:bg-forest-100 text-neutral-400 hover:text-forest-600'
+              }`}
+            >
+              {adviceLoading ? <Spinner className="w-3.5 h-3.5" /> : <Lightbulb size={14} />}
+            </button>
+
+            {canActToday && dueInfo && (
+              <>
+                <button
+                  onClick={() => handleComplete(task, dueInfo.occurrenceDate)}
+                  disabled={createEvent.isPending}
+                  title="Отметить выполненной"
+                  className="w-8 h-8 rounded-lg bg-forest-100 hover:bg-forest-200 text-forest-600 flex items-center justify-center transition-colors disabled:opacity-50"
+                >
+                  <Check size={14} />
+                </button>
+                <button
+                  onClick={() => { setMoveTaskId(prev => prev === task.id ? null : task.id); setMoveDate(getTomorrow()) }}
+                  disabled={createEvent.isPending}
+                  title="Перенести"
+                  className="w-8 h-8 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-600 flex items-center justify-center transition-colors disabled:opacity-50"
+                >
+                  <ArrowRight size={14} />
+                </button>
+              </>
+            )}
+
+            <button
+              onClick={() => { setEditTask(task); setFormOpen(true) }}
+              className="w-8 h-8 rounded-lg bg-beige-200 hover:bg-beige-300 text-neutral-500 flex items-center justify-center transition-colors"
+            >
+              <Pencil size={14} />
+            </button>
+            <button
+              onClick={() => handleDelete(task)}
+              className="w-8 h-8 rounded-lg bg-red-100 hover:bg-red-200 text-red-500 flex items-center justify-center transition-colors"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </div>
+
+        {adviceOpen && (
+          <AdvicePanel advice={adviceMap[task.id] ?? null} isLoading={adviceLoading} error={adviceError} compact={false} />
+        )}
+
+        {moveTaskId === task.id && dueInfo && (
+          <div className="mt-3 pt-3 border-t border-beige-200 animate-fade-in">
+            <p className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2">Перенести задачу</p>
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+              <input type="date" className="input" value={moveDate} min={today} onChange={e => setMoveDate(e.target.value)} />
+              <div className="flex gap-2">
+                <button onClick={() => handleMove(task.id, dueInfo.occurrenceDate)} disabled={createEvent.isPending || !moveDate} className="btn-primary px-4 py-2 text-sm">Сохранить</button>
+                <button onClick={() => setMoveTaskId(null)} disabled={createEvent.isPending} className="btn-secondary px-4 py-2 text-sm">Отмена</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -247,159 +346,26 @@ export default function Tasks() {
 
       {isLoading ? (
         <div className="flex justify-center py-12"><Spinner className="w-8 h-8" /></div>
-      ) : filtered.length === 0 ? (
+      ) : myTasks.length === 0 && canDoTasks.length === 0 ? (
         <div className="card text-center text-neutral-400 py-10">
           <p className="text-3xl mb-2">📝</p>
           <p>Задач не найдено</p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {filtered.map(task => {
-            const room = task.room_id ? roomMap.get(task.room_id) : undefined
-            const assignee = task.assignee_id ? memberMap.get(task.assignee_id) : undefined
-            const dueInfo = todayDueMap.get(task.id)
-            const todayStatus = occurrenceStatusMap.get(`${task.id}_${today}`)
-            const canActToday =
-              !!dueInfo &&
-              todayStatus !== 'done' &&
-              todayStatus !== 'skipped' &&
-              todayStatus !== 'moved'
-            const adviceOpen = adviceOpenId === task.id
-            const adviceLoading = adviceLoadingId === task.id
-            const adviceError = adviceErrorId === task.id
-
-            return (
-              <div key={task.id} className="card hover:shadow-hover transition-shadow">
-                <div className="flex items-center gap-4">
-                  <div className="flex-1 min-w-0">
-                    <p className={`font-medium text-sm truncate ${todayStatus === 'done' ? 'line-through text-neutral-400' : 'text-neutral-800'}`}>
-                      {task.title}
-                    </p>
-
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      {room && <span className="text-xs text-neutral-500">{room.icon} {room.name}</span>}
-                      <Badge variant={PRIORITY_VARIANTS[task.priority]}>{PRIORITY_LABELS[task.priority]}</Badge>
-                      <span className="text-xs text-neutral-400">{buildRRuleDescription(task)}</span>
-                      {assignee && (
-                        <span className="text-xs text-neutral-400">{assignee.user?.name ?? 'N/A'}</span>
-                      )}
-                      {todayStatus === 'done' && (
-                        <Badge variant="success">Выполнено сегодня</Badge>
-                      )}
-                      {todayStatus === 'moved' && (
-                        <Badge variant="info">Перенесено</Badge>
-                      )}
-                      {!todayStatus && dueInfo && (
-                        <Badge variant="warning">Актуально на сегодня</Badge>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-1 flex-shrink-0">
-                    {/* RAG advice button */}
-                    <button
-                      onClick={() => handleToggleAdvice(task)}
-                      disabled={adviceLoading}
-                      title="Получить совет из базы знаний"
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50 ${
-                        adviceOpen
-                          ? 'bg-forest-200 text-forest-700'
-                          : 'bg-beige-100 hover:bg-forest-100 text-neutral-400 hover:text-forest-600'
-                      }`}
-                    >
-                      {adviceLoading ? <Spinner className="w-3.5 h-3.5" /> : <Lightbulb size={14} />}
-                    </button>
-
-                    {canActToday && dueInfo && (
-                      <>
-                        <button
-                          onClick={() => handleComplete(task, dueInfo.occurrenceDate)}
-                          disabled={createEvent.isPending}
-                          title="Отметить выполненной"
-                          className="w-8 h-8 rounded-lg bg-forest-100 hover:bg-forest-200 text-forest-600 flex items-center justify-center transition-colors disabled:opacity-50"
-                        >
-                          <Check size={14} />
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            setMoveTaskId(prev => prev === task.id ? null : task.id)
-                            setMoveDate(getTomorrow())
-                          }}
-                          disabled={createEvent.isPending}
-                          title="Перенести"
-                          className="w-8 h-8 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-600 flex items-center justify-center transition-colors disabled:opacity-50"
-                        >
-                          <ArrowRight size={14} />
-                        </button>
-                      </>
-                    )}
-
-                    <button
-                      onClick={() => { setEditTask(task); setFormOpen(true) }}
-                      className="w-8 h-8 rounded-lg bg-beige-200 hover:bg-beige-300 text-neutral-500 flex items-center justify-center transition-colors"
-                    >
-                      <Pencil size={14} />
-                    </button>
-
-                    <button
-                      onClick={() => handleDelete(task)}
-                      className="w-8 h-8 rounded-lg bg-red-100 hover:bg-red-200 text-red-500 flex items-center justify-center transition-colors"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* RAG advice panel */}
-                {adviceOpen && (
-                  <AdvicePanel
-                    advice={adviceMap[task.id] ?? null}
-                    isLoading={adviceLoading}
-                    error={adviceError}
-                    compact={false}
-                  />
-                )}
-
-                {moveTaskId === task.id && dueInfo && (
-                  <div className="mt-3 pt-3 border-t border-beige-200 animate-fade-in">
-                    <p className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2">
-                      Перенести задачу
-                    </p>
-
-                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-                      <input
-                        type="date"
-                        className="input"
-                        value={moveDate}
-                        min={today}
-                        onChange={e => setMoveDate(e.target.value)}
-                      />
-
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleMove(task.id, dueInfo.occurrenceDate)}
-                          disabled={createEvent.isPending || !moveDate}
-                          className="btn-primary px-4 py-2 text-sm"
-                        >
-                          Сохранить
-                        </button>
-
-                        <button
-                          onClick={() => setMoveTaskId(null)}
-                          disabled={createEvent.isPending}
-                          className="btn-secondary px-4 py-2 text-sm"
-                        >
-                          Отмена
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
+        <>
+          {myTasks.length > 0 && (
+            <section>
+              <h2 className="font-display text-sm text-neutral-500 uppercase tracking-wide mb-2">Мои задачи</h2>
+              <div className="space-y-2">{myTasks.map(renderTask)}</div>
+            </section>
+          )}
+          {canDoTasks.length > 0 && (
+            <section>
+              <h2 className="font-display text-sm text-neutral-500 uppercase tracking-wide mb-2 mt-4">Можно сделать</h2>
+              <div className="space-y-2">{canDoTasks.map(renderTask)}</div>
+            </section>
+          )}
+        </>
       )}
 
       <button
@@ -411,8 +377,9 @@ export default function Tasks() {
 
       <TaskForm
         open={formOpen}
-        onClose={() => { setFormOpen(false); setEditTask(null) }}
+        onClose={() => { setFormOpen(false); setEditTask(null); setPrefillTitle(undefined) }}
         task={editTask}
+        prefillTitle={prefillTitle}
       />
 
       {/* Suggestions modal */}
@@ -465,6 +432,7 @@ export default function Tasks() {
                       onClick={() => {
                         setSuggestOpen(false)
                         setEditTask(null)
+                        setPrefillTitle(s.title)
                         setFormOpen(true)
                       }}
                       className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-forest-400 hover:bg-forest-500 text-white text-xs font-medium transition-colors"

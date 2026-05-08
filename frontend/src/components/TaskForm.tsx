@@ -36,6 +36,7 @@ interface TaskFormProps {
   open: boolean
   onClose: () => void
   task?: Task | null
+  prefillTitle?: string
 }
 
 const defaultForm: TaskFormData = {
@@ -76,7 +77,7 @@ function TemplateCard({
       </div>
       <div className="flex items-center gap-2 mt-1">
         <span className="text-xs text-neutral-500">{PRIORITY_LABELS[tpl.priority]}</span>
-        <span className="text-xs text-neutral-400">{tpl.effort_hours}ч</span>
+        <span className="text-xs text-neutral-400">{Math.round(tpl.effort_hours * 60)} мин</span>
         {tpl.description && (
           <span className="text-xs text-neutral-400 truncate">{tpl.description.slice(0, 50)}{tpl.description.length > 50 ? '…' : ''}</span>
         )}
@@ -85,7 +86,7 @@ function TemplateCard({
   )
 }
 
-export function TaskForm({ open, onClose, task }: TaskFormProps) {
+export function TaskForm({ open, onClose, task, prefillTitle }: TaskFormProps) {
   const [form, setForm] = useState<TaskFormData>(defaultForm)
   const [showTemplates, setShowTemplates] = useState(false)
   const { data: rooms = [] } = useRooms()
@@ -109,11 +110,13 @@ export function TaskForm({ open, onClose, task }: TaskFormProps) {
         window_days: task.window_days ?? 0,
         effort_hours: task.effort_hours ?? 1.0,
       })
+    } else if (prefillTitle) {
+      setForm({ ...defaultForm, title: prefillTitle })
     } else {
       setForm(defaultForm)
     }
     setShowTemplates(false)
-  }, [task, open])
+  }, [task, open, prefillTitle])
 
   const set = (key: keyof TaskFormData, val: unknown) =>
     setForm(f => ({ ...f, [key]: val }))
@@ -342,19 +345,43 @@ export function TaskForm({ open, onClose, task }: TaskFormProps) {
         <div>
           <label className="label">
             Трудоёмкость
-            <span className="ml-1 text-xs text-neutral-400 font-normal">— примерное время выполнения</span>
+            <span className="ml-1 text-xs text-neutral-400 font-normal">— примерное время</span>
           </label>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {[
+              { label: '10 мин', val: 10 / 60 },
+              { label: '15 мин', val: 15 / 60 },
+              { label: '30 мин', val: 0.5 },
+              { label: '45 мин', val: 0.75 },
+              { label: '1 час',  val: 1.0 },
+              { label: '2 часа', val: 2.0 },
+              { label: '3 часа', val: 3.0 },
+            ].map(({ label, val }) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => set('effort_hours', val)}
+                className={`px-3 py-1 rounded-lg text-sm transition-all ${
+                  Math.abs(form.effort_hours - val) < 0.01
+                    ? 'bg-forest-400 text-white'
+                    : 'bg-beige-200 text-neutral-600 hover:bg-beige-300'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="flex items-center gap-2">
             <input
               type="number"
-              min={0.1}
-              max={24}
-              step={0.1}
+              min={1}
+              max={1440}
+              step={5}
               className="input w-24"
-              value={form.effort_hours}
-              onChange={e => set('effort_hours', Math.max(0.1, parseFloat(e.target.value) || 1.0))}
+              value={Math.round(form.effort_hours * 60)}
+              onChange={e => set('effort_hours', Math.max(1, parseInt(e.target.value) || 30) / 60)}
             />
-            <span className="text-sm text-neutral-500">ч</span>
+            <span className="text-sm text-neutral-500">мин</span>
           </div>
         </div>
 

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(grep \"\\\\.ts$\")",
+      "Bash(npm run *)",
+      "Bash(python -c ' *)",
+      "Bash(pip install *)",
+      "Bash(python -c \"from app.core.config import settings; print\\('Settings OK, DB:', settings.DATABASE_URL[:30]\\)\")",
+      "Bash(docker-compose ps *)",
+      "Bash(docker-compose exec *)"
+    ]
+  }
+}

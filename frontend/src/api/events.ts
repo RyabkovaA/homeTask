@@ -1,5 +1,8 @@
+import axios from 'axios'
 import client from './client'
 import type { TaskEvent, EventStatus, TaskHistoryItem } from '../types'
+import { enqueueEvent } from '../utils/offlineQueue'
+import { useOfflineStore } from '../store/offlineStore'
 
 interface EventCreate {
   task_id: string
@@ -19,15 +22,39 @@ interface EventListFilters {
 export const eventsApi = {
   list: (houseId: string, filters?: EventListFilters) => {
     const params: Record<string, string> = {}
-
     if (filters?.fromDate) params.from_date = filters.fromDate
     if (filters?.toDate) params.to_date = filters.toDate
     if (filters?.status) params.status = filters.status
     if (filters?.roomId) params.room_id = filters.roomId
-
     return client.get<TaskHistoryItem[]>(`/houses/${houseId}/events`, { params }).then(r => r.data)
   },
 
-  create: (data: EventCreate) =>
-    client.post<TaskEvent>('/events', data).then(r => r.data)
+  // Direct API call — used during offline queue flush (no queuing on failure)
+  createDirect: (data: EventCreate) =>
+    client.post<TaskEvent>('/events', data).then(r => r.data),
+
+  // Offline-aware create: tries network first, queues in IndexedDB if offline
+  create: async (data: EventCreate): Promise<TaskEvent | null> => {
+    if (!navigator.onLine) {
+      await enqueueEvent({ localId: crypto.randomUUID(), payload: data })
+      useOfflineStore.getState().incrementPending()
+      return null
+    }
+    try {
+      return await client.post<TaskEvent>('/events', data).then(r => r.data)
+    } catch (err: unknown) {
+      const isNetworkError =
+        axios.isAxiosError(err) && !err.response && (
+          err.code === 'ERR_NETWORK' ||
+          err.code === 'ECONNABORTED' ||
+          err.message === 'Network Error'
+        )
+      if (isNetworkError) {
+        await enqueueEvent({ localId: crypto.randomUUID(), payload: data })
+        useOfflineStore.getState().incrementPending()
+        return null
+      }
+      throw err
+    }
+  },
 }

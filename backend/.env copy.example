@@ -1,0 +1,27 @@
+DATABASE_URL=postgresql+asyncpg://hometask:hometask@localhost:5432/hometask
+SECRET_KEY=change-me-in-production
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=10080
+CORS_ORIGINS=["http://localhost:5173"]
+
+# LLM provider: "none" | "gigachat" | "ollama"
+LLM_PROVIDER=gigachat
+GIGACHAT_AUTH_KEY='MDE5YWVlMTMtYzNhYS03NjM5LWExMDYtYzAwZGM0OTM0OTI1OmU1OGQyYTA4LWFkNDAtNGM5ZC04NTdlLWE2Njk0NjQzMTYzNw=='
+client_secret='e58d2a08-ad40-4c9d-857e-a66946431637'
+client_id='019aee13-c3aa-7639-a106-c00dc4934925'
+GIGACHAT_SCOPE=GIGACHAT_API_PERS
+OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2
+
+# Embedding: "tfidf" (default) | "sentence-transformers" (requires requirements-ai.txt)
+# EMBEDDING_PROVIDER=tfidf
+# EMBEDDING_MODEL=all-MiniLM-L6-v2
+
+EMBEDDING_PROVIDER=sentence-transformers
+EMBEDDING_MODEL=all-MiniLM-L6-v2 
+
+# Web Push (VAPID) — generate keys with: python scripts/generate_vapid.py
+# Leave empty to disable push notifications
+VAPID_PRIVATE_KEY=LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JR0hBZ0VBTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEJHMHdhd0lCQVFRZzJPQ1h1TTIyeU1QeXQ5R2QKRy9HVTdTMXJ0MElSMnhtVjVYMWdPYWptc0pHaFJBTkNBQVR0MmpvN0NRUnFHNldPVTlHNTI4ZnFDTzF0cjdsNwp3bzBYWFAyWnZ5blU1eDJyc2loRXdMSkxNWGUzcHFUaU1ZM0dhQWZlTC9qWlFuaVVlQzU0RnAzMAotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tCg==
+VAPID_PUBLIC_KEY=BO3aOjsJBGobpY5T0bnbx-oI7W2vuXvCjRdc_Zm_KdTnHauyKETAsksxd7empOIxjcZoB94v-NlCeJR4LngWnfQ
+VAPID_CLAIM_EMAIL=admin@yourdomain.com
