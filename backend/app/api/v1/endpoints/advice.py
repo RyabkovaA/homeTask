@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from uuid import UUID
 from typing import Optional
 from app.core.database import get_db
@@ -23,7 +23,12 @@ async def list_advice(
     db: AsyncSession = Depends(get_db),
     current_member: HouseMember = Depends(get_current_member)
 ):
-    result = await db.execute(select(Advice).where(Advice.is_active == True))
+    result = await db.execute(
+        select(Advice).where(
+            Advice.is_active == True,
+            or_(Advice.house_id == None, Advice.house_id == current_member.house_id),
+        )
+    )
     all_advice = result.scalars().all()
     if room:
         all_advice = [a for a in all_advice if room in a.room_names]
@@ -37,7 +42,11 @@ async def create_advice(
     current_member: HouseMember = Depends(get_current_member)
 ):
     _require_admin(current_member)
-    advice = Advice(**payload.model_dump())
+    data = payload.model_dump()
+    # Advice created via the API is always scoped to the creator's house.
+    # Global tips (house_id = NULL) come only from seed scripts.
+    data["house_id"] = current_member.house_id
+    advice = Advice(**data)
     db.add(advice)
     await db.commit()
     await db.refresh(advice)

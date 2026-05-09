@@ -34,5 +34,6 @@ class AdviceOut(BaseModel):
     season: Optional[str]
     category: str
     is_active: bool
+    house_id: Optional[UUID] = None  # None = global; non-null = house-specific personal tip
 
     model_config = {"from_attributes": True}

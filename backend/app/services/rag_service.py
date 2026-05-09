@@ -229,7 +229,7 @@ class _CorpusCache:
     index: Any  # TfidfCorpusIndex | SentenceTransformerIndex
 
 
-_corpus_cache: Optional[_CorpusCache] = None
+_corpus_cache: dict[frozenset, _CorpusCache] = {}
 
 
 def _get_corpus_index(advice_items: list[Advice]) -> Any:
@@ -246,8 +246,9 @@ def _get_corpus_index(advice_items: list[Advice]) -> Any:
     from app.core.config import settings
 
     current_ids = frozenset(str(a.id) for a in advice_items)
-    if _corpus_cache is not None and _corpus_cache.advice_ids == current_ids:
-        return _corpus_cache.index
+    cached = _corpus_cache.get(current_ids)
+    if cached is not None:
+        return cached.index
 
     index: Any
     if settings.EMBEDDING_PROVIDER == "sentence-transformers" and _ST_AVAILABLE:
@@ -258,8 +259,11 @@ def _get_corpus_index(advice_items: list[Advice]) -> Any:
     else:
         index = TfidfCorpusIndex(advice_items)
 
-    _corpus_cache = _CorpusCache(advice_ids=current_ids, index=index)
-    return _corpus_cache.index
+    # Evict old entries if cache grows large (> 20 distinct advice sets)
+    if len(_corpus_cache) > 20:
+        _corpus_cache.clear()
+    _corpus_cache[current_ids] = _CorpusCache(advice_ids=current_ids, index=index)
+    return index
 
 
 # ---------------------------------------------------------------------------
@@ -395,12 +399,15 @@ def generate(
     main_advice = top_advice.content
     steps = list(top_advice.steps or [])
 
-    extra_steps_added = 0
-    for _, doc in retrieved[1:]:
-        for step in (doc.advice.steps or []):
-            if step not in steps and extra_steps_added < 2:
-                steps.append(step)
-                extra_steps_added += 1
+    # Only pull steps from secondary sources when the primary source has none.
+    # Mixing steps from unrelated advice produces incoherent output.
+    if not steps:
+        extra_steps_added = 0
+        for _, doc in retrieved[1:]:
+            for step in (doc.advice.steps or []):
+                if step not in steps and extra_steps_added < 4:
+                    steps.append(step)
+                    extra_steps_added += 1
 
     warnings = _priority_warning(task.priority, history)
     if top_score < min_score * 5:
@@ -525,7 +532,12 @@ async def rag_recommend(
 
     Returns dict with keys: main_advice, steps, warnings, sources, delivery_id.
     """
-    result = await db.execute(select(Advice).where(Advice.is_active == True))
+    result = await db.execute(
+        select(Advice).where(
+            Advice.is_active == True,
+            (Advice.house_id == None) | (Advice.house_id == member.house_id),
+        )
+    )
     advice_items: list[Advice] = result.scalars().all()
 
     if not advice_items:
@@ -634,7 +646,12 @@ async def rag_recommend_by_query(
     RAG retrieval by arbitrary query text (used by habit analysis).
     No task context, no history summary — pure retrieval + generation.
     """
-    result = await db.execute(select(Advice).where(Advice.is_active == True))
+    result = await db.execute(
+        select(Advice).where(
+            Advice.is_active == True,
+            (Advice.house_id == None) | (Advice.house_id == member.house_id),
+        )
+    )
     advice_items: list[Advice] = result.scalars().all()
 
     if not advice_items:

@@ -1,7 +1,7 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
-import { Clock3, CalendarRange, BellRing } from 'lucide-react'
+import { Clock3, CalendarRange, BellRing, Plus } from 'lucide-react'
 import { useTasks } from '../hooks/useTasks'
 import { useEvents, useCreateEvent } from '../hooks/useEvents'
 import { useAnalytics } from '../hooks/useAnalytics'
@@ -10,6 +10,7 @@ import { useRooms } from '../hooks/useRooms'
 import { useAuthStore } from '../store/authStore'
 import { useNudge } from '../hooks/useRag'
 import { TaskCard } from '../components/TaskCard'
+import { TaskForm } from '../components/TaskForm'
 import { ProgressBar } from '../components/ui/ProgressBar'
 import { Spinner } from '../components/ui/Spinner'
 import type { EventStatus, Task } from '../types'
@@ -41,6 +42,7 @@ function getNextOccurrence(task: Task, fromDate: string, horizonDays = 30) {
 }
 
 export default function Dashboard() {
+  const [formOpen, setFormOpen] = useState(false)
   const { userName } = useAuthStore()
   const today = new Date().toISOString().slice(0, 10)
   const yesterday = addDays(today, -1)
@@ -319,6 +321,15 @@ export default function Dashboard() {
           <p className="text-sm text-neutral-600">{randomAdvice.content}</p>
         </div>
       )}
+
+      <button
+        onClick={() => setFormOpen(true)}
+        className="fixed bottom-20 right-6 md:bottom-8 w-14 h-14 bg-forest-400 hover:bg-forest-500 text-white rounded-full shadow-hover flex items-center justify-center transition-all active:scale-95"
+      >
+        <Plus size={24} />
+      </button>
+
+      <TaskForm open={formOpen} onClose={() => setFormOpen(false)} task={null} />
     </div>
   )
 }

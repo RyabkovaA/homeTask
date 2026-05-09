@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import String, Boolean, JSON
+from sqlalchemy import String, Boolean, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -19,3 +19,7 @@ class Advice(Base):
     # category: "regular" | "deep" | "prevention" | "storage" | "nonobvious"
     category: Mapped[str] = mapped_column(String(20), default="regular")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # house_id = NULL → global (visible to all); non-null → visible only within that house
+    house_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("houses.id", ondelete="CASCADE"), nullable=True, index=True
+    )
