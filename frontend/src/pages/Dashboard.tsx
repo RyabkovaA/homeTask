@@ -8,12 +8,13 @@ import { useAnalytics } from '../hooks/useAnalytics'
 import { useAdvice } from '../hooks/useAdvice'
 import { useRooms } from '../hooks/useRooms'
 import { useAuthStore } from '../store/authStore'
-import { useNudge } from '../hooks/useRag'
+import { useNudge, useTaskRagAdvice } from '../hooks/useRag'
 import { TaskCard } from '../components/TaskCard'
 import { TaskForm } from '../components/TaskForm'
+import { AdvicePanel } from '../components/AdvicePanel'
 import { ProgressBar } from '../components/ui/ProgressBar'
 import { Spinner } from '../components/ui/Spinner'
-import type { EventStatus, Task } from '../types'
+import type { EventStatus, RagAdvice, Task } from '../types'
 import toast from 'react-hot-toast'
 import {
   getOccurrences,
@@ -43,6 +44,10 @@ function getNextOccurrence(task: Task, fromDate: string, horizonDays = 30) {
 
 export default function Dashboard() {
   const [formOpen, setFormOpen] = useState(false)
+  const [adviceOpenId, setAdviceOpenId] = useState<string | null>(null)
+  const [adviceMap, setAdviceMap] = useState<Record<string, RagAdvice>>({})
+  const [adviceLoadingId, setAdviceLoadingId] = useState<string | null>(null)
+  const [adviceErrorId, setAdviceErrorId] = useState<string | null>(null)
   const { userName } = useAuthStore()
   const today = new Date().toISOString().slice(0, 10)
   const yesterday = addDays(today, -1)
@@ -59,16 +64,41 @@ export default function Dashboard() {
   const { data: rooms = [] } = useRooms()
   const { data: nudge } = useNudge()
   const createEvent = useCreateEvent()
+  const ragAdvice = useTaskRagAdvice()
 
-  const todayEntries = useMemo(
-    () => getDueTaskEntries(tasks, recentEvents, today),
-    [tasks, recentEvents, today]
-  )
+  const handleToggleAdvice = async (taskId: string) => {
+    if (adviceOpenId === taskId) {
+      setAdviceOpenId(null)
+      return
+    }
+    setAdviceOpenId(taskId)
+    if (adviceMap[taskId]) return
+    setAdviceLoadingId(taskId)
+    setAdviceErrorId(null)
+    try {
+      const result = await ragAdvice.mutateAsync(taskId)
+      setAdviceMap(prev => ({ ...prev, [taskId]: result }))
+    } catch {
+      setAdviceErrorId(taskId)
+    } finally {
+      setAdviceLoadingId(null)
+    }
+  }
 
   const occurrenceStatusMap = useMemo(
     () => getOccurrenceStatusMap(recentEvents),
     [recentEvents]
   )
+
+  const todayEntries = useMemo(() => {
+    const entries = getDueTaskEntries(tasks, recentEvents, today)
+    const terminal = new Set(['done', 'skipped', 'moved'])
+    return [...entries].sort((a, b) => {
+      const aDone = terminal.has(occurrenceStatusMap.get(`${a.task.id}_${today}`) ?? '') ? 1 : 0
+      const bDone = terminal.has(occurrenceStatusMap.get(`${b.task.id}_${today}`) ?? '') ? 1 : 0
+      return aDone - bDone
+    })
+  }, [tasks, recentEvents, today, occurrenceStatusMap])
 
   const roomMap = useMemo(() => new Map(rooms.map(r => [r.id, r])), [rooms])
 
@@ -249,6 +279,14 @@ export default function Dashboard() {
                 existingStatus={occurrenceStatusMap.get(`${entry.task.id}_${entry.date}`)}
                 onAction={payload => handleAction(entry.task.id, entry.originalOccurrenceDate ?? entry.date, payload)}
                 loading={createEvent.isPending}
+                onGetAdvice={() => handleToggleAdvice(entry.task.id)}
+                adviceOpen={adviceOpenId === entry.task.id}
+                adviceLoading={adviceLoadingId === entry.task.id}
+                advicePanel={
+                  adviceOpenId === entry.task.id
+                    ? <AdvicePanel advice={adviceMap[entry.task.id] ?? null} isLoading={adviceLoadingId === entry.task.id} error={adviceErrorId === entry.task.id} compact />
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -271,30 +309,31 @@ export default function Dashboard() {
         ) : (
           <div className="space-y-3">
             {nonUrgentTasks.map(({ task, label, sublabel, occurrenceDate }) => (
-              <div key={`${task.id}_${label}_${occurrenceDate}`} className="card">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm text-neutral-800">{task.title}</p>
-
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <Badge variant="default">{label}</Badge>
-                      {task.room_id && roomMap.get(task.room_id) && (
-                        <span className="text-xs text-neutral-500">
-                          {roomMap.get(task.room_id)?.icon} {roomMap.get(task.room_id)?.name}
-                        </span>
-                      )}
-                    </div>
-
-                    <p className="text-xs text-neutral-500 mt-2">{sublabel}</p>
-                  </div>
-
-                  <div className="text-right text-xs text-neutral-400 flex-shrink-0">
-                    <div className="flex items-center gap-1 justify-end">
-                      <CalendarRange size={13} />
-                      {format(new Date(occurrenceDate), 'd MMM', { locale: ru })}
-                    </div>
-                  </div>
+              <div key={`${task.id}_${label}_${occurrenceDate}`}>
+                <div className="flex items-center gap-2 mb-1.5 px-1">
+                  <Badge variant="default">{label}</Badge>
+                  <span className="text-xs text-neutral-400 flex items-center gap-1">
+                    <CalendarRange size={12} />
+                    {format(new Date(occurrenceDate), 'd MMM', { locale: ru })}
+                  </span>
+                  <span className="text-xs text-neutral-400">{sublabel}</span>
                 </div>
+                <TaskCard
+                  task={task}
+                  room={task.room_id ? roomMap.get(task.room_id) : undefined}
+                  occurrenceDate={occurrenceDate}
+                  existingStatus={occurrenceStatusMap.get(`${task.id}_${occurrenceDate}`)}
+                  onAction={payload => handleAction(task.id, occurrenceDate, payload)}
+                  loading={createEvent.isPending}
+                  onGetAdvice={() => handleToggleAdvice(task.id)}
+                  adviceOpen={adviceOpenId === task.id}
+                  adviceLoading={adviceLoadingId === task.id}
+                  advicePanel={
+                    adviceOpenId === task.id
+                      ? <AdvicePanel advice={adviceMap[task.id] ?? null} isLoading={adviceLoadingId === task.id} error={adviceErrorId === task.id} compact />
+                      : undefined
+                  }
+                />
               </div>
             ))}
           </div>

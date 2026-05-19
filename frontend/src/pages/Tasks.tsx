@@ -127,27 +127,33 @@ export default function Tasks() {
     }
   }
 
-  const handleComplete = async (task: Task, occurrenceDate: string) => {
+  const getOccurrenceDateForTask = (task: Task) =>
+    todayDueMap.get(task.id)?.occurrenceDate ?? today
+
+  const handleComplete = async (task: Task) => {
+    const occurrenceDate = getOccurrenceDateForTask(task)
     try {
-      await createEvent.mutateAsync({
-        task_id: task.id,
-        occurrence_date: occurrenceDate,
-        status: 'done'
-      })
+      await createEvent.mutateAsync({ task_id: task.id, occurrence_date: occurrenceDate, status: 'done' })
       toast.success('Задача отмечена выполненной')
     } catch {
       toast.error('Не удалось отметить задачу выполненной')
     }
   }
 
-  const handleMove = async (taskId: string, occurrenceDate: string) => {
+  const handleSkip = async (task: Task) => {
+    const occurrenceDate = getOccurrenceDateForTask(task)
     try {
-      await createEvent.mutateAsync({
-        task_id: taskId,
-        occurrence_date: occurrenceDate,
-        status: 'moved',
-        moved_to: moveDate
-      })
+      await createEvent.mutateAsync({ task_id: task.id, occurrence_date: occurrenceDate, status: 'skipped' })
+      toast.success('Задача пропущена')
+    } catch {
+      toast.error('Не удалось пропустить задачу')
+    }
+  }
+
+  const handleMove = async (taskId: string) => {
+    const occurrenceDate = getOccurrenceDateForTask(tasks.find(t => t.id === taskId)!)
+    try {
+      await createEvent.mutateAsync({ task_id: taskId, occurrence_date: occurrenceDate, status: 'moved', moved_to: moveDate })
       toast.success(`Задача перенесена на ${format(new Date(moveDate), 'd MMMM', { locale: ru })}`)
       setMoveTaskId(null)
       setMoveDate(getTomorrow())
@@ -196,8 +202,9 @@ export default function Tasks() {
     const room = task.room_id ? roomMap.get(task.room_id) : undefined
     const assignee = task.assignee_id ? memberMap.get(task.assignee_id) : undefined
     const dueInfo = todayDueMap.get(task.id)
-    const todayStatus = occurrenceStatusMap.get(`${task.id}_${today}`)
-    const canActToday = !!dueInfo && todayStatus !== 'done' && todayStatus !== 'skipped' && todayStatus !== 'moved'
+    const occDate = getOccurrenceDateForTask(task)
+    const occStatus = occurrenceStatusMap.get(`${task.id}_${occDate}`)
+    const canAct = occStatus !== 'done' && occStatus !== 'skipped' && occStatus !== 'moved'
     const adviceOpen = adviceOpenId === task.id
     const adviceLoading = adviceLoadingId === task.id
     const adviceError = adviceErrorId === task.id
@@ -206,7 +213,7 @@ export default function Tasks() {
       <div key={task.id} className="card hover:shadow-hover transition-shadow">
         <div className="flex items-center gap-4">
           <div className="flex-1 min-w-0">
-            <p className={`font-medium text-sm truncate ${todayStatus === 'done' ? 'line-through text-neutral-400' : 'text-neutral-800'}`}>
+            <p className={`font-medium text-sm truncate ${occStatus === 'done' ? 'line-through text-neutral-400' : 'text-neutral-800'}`}>
               {task.title}
             </p>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -214,9 +221,9 @@ export default function Tasks() {
               <Badge variant={PRIORITY_VARIANTS[task.priority]}>{PRIORITY_LABELS[task.priority]}</Badge>
               <span className="text-xs text-neutral-400">{buildRRuleDescription(task)}</span>
               {assignee && <span className="text-xs text-neutral-400">{assignee.user?.name ?? 'N/A'}</span>}
-              {todayStatus === 'done' && <Badge variant="success">Выполнено сегодня</Badge>}
-              {todayStatus === 'moved' && <Badge variant="info">Перенесено</Badge>}
-              {!todayStatus && dueInfo && <Badge variant="warning">Актуально на сегодня</Badge>}
+              {occStatus === 'done' && <Badge variant="success">Выполнено сегодня</Badge>}
+              {occStatus === 'moved' && <Badge variant="info">Перенесено</Badge>}
+              {!occStatus && dueInfo && <Badge variant="warning">Актуально на сегодня</Badge>}
             </div>
           </div>
 
@@ -232,15 +239,23 @@ export default function Tasks() {
               {adviceLoading ? <Spinner className="w-3.5 h-3.5" /> : <Lightbulb size={14} />}
             </button>
 
-            {canActToday && dueInfo && (
+            {canAct && (
               <>
                 <button
-                  onClick={() => handleComplete(task, dueInfo.occurrenceDate)}
+                  onClick={() => handleComplete(task)}
                   disabled={createEvent.isPending}
                   title="Отметить выполненной"
                   className="w-8 h-8 rounded-lg bg-forest-100 hover:bg-forest-200 text-forest-600 flex items-center justify-center transition-colors disabled:opacity-50"
                 >
                   <Check size={14} />
+                </button>
+                <button
+                  onClick={() => handleSkip(task)}
+                  disabled={createEvent.isPending}
+                  title="Пропустить"
+                  className="w-8 h-8 rounded-lg bg-beige-200 hover:bg-beige-300 text-neutral-500 flex items-center justify-center transition-colors disabled:opacity-50"
+                >
+                  <X size={14} />
                 </button>
                 <button
                   onClick={() => { setMoveTaskId(prev => prev === task.id ? null : task.id); setMoveDate(getTomorrow()) }}
@@ -272,13 +287,13 @@ export default function Tasks() {
           <AdvicePanel advice={adviceMap[task.id] ?? null} isLoading={adviceLoading} error={adviceError} compact={false} />
         )}
 
-        {moveTaskId === task.id && dueInfo && (
+        {moveTaskId === task.id && (
           <div className="mt-3 pt-3 border-t border-beige-200 animate-fade-in">
             <p className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2">Перенести задачу</p>
             <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
               <input type="date" className="input" value={moveDate} min={today} onChange={e => setMoveDate(e.target.value)} />
               <div className="flex gap-2">
-                <button onClick={() => handleMove(task.id, dueInfo.occurrenceDate)} disabled={createEvent.isPending || !moveDate} className="btn-primary px-4 py-2 text-sm">Сохранить</button>
+                <button onClick={() => handleMove(task.id)} disabled={createEvent.isPending || !moveDate} className="btn-primary px-4 py-2 text-sm">Сохранить</button>
                 <button onClick={() => setMoveTaskId(null)} disabled={createEvent.isPending} className="btn-secondary px-4 py-2 text-sm">Отмена</button>
               </div>
             </div>
@@ -384,7 +399,7 @@ export default function Tasks() {
 
       {/* Suggestions modal */}
       {suggestOpen && (
-        <div className="fixed inset-0 bg-black/30 z-40 flex items-end md:items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/30 z-40 flex items-center justify-center p-4">
           <div className="bg-beige-50 rounded-2xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col animate-fade-in">
             <div className="flex items-center justify-between px-5 py-4 border-b border-beige-200">
               <div>

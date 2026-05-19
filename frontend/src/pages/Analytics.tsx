@@ -209,14 +209,16 @@ export default function Analytics() {
       )}
 
       {hasData && <><div className="card">
-        <div className="flex flex-wrap gap-4 items-center justify-between">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-1">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-1">
             <StatCard label="Соблюдение" value={metrics.adherence_rate} unit="%" icon="📊" />
             <StatCard label="Серия" value={metrics.streak} unit="дн" icon="🔥" />
             <StatCard label="Выполнено" value={metrics.completion_ratio} unit="%" icon="✅" />
             <StatCard label="Просрочено" value={metrics.overdue_rate} unit="%" icon="⚠️" />
           </div>
-          <ConsistencyRing score={metrics.consistency_score} />
+          <div className="flex justify-center sm:block">
+            <ConsistencyRing score={metrics.consistency_score} />
+          </div>
         </div>
         <p className="text-xs text-neutral-400 mt-3">
           Стабильность — насколько равномерно выполняются задачи каждый день (0 = хаотично, 100 = идеально стабильно).

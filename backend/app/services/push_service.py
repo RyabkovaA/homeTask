@@ -4,6 +4,7 @@ import asyncio
 import base64
 import json
 import logging
+from datetime import date
 from typing import Optional
 from uuid import UUID
 
@@ -134,3 +135,46 @@ async def notify_task_assigned(member_id: UUID, task_title: str) -> None:
                 "data": {"url": "/tasks"},
             },
         )
+
+
+async def check_and_notify_all_done(member_id: UUID, house_id: UUID) -> None:
+    """Background task: if all of today's house tasks are done, congratulate the member."""
+    from app.models.task import Task
+    from app.models.task_event import TaskEvent, EventStatus
+    from app.services.recurrence_service import get_occurrences
+
+    today = date.today()
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Task).where(Task.house_id == house_id, Task.is_active == True)  # noqa: E712
+        )
+        tasks = result.scalars().all()
+
+        due_task_ids = [
+            task.id
+            for task in tasks
+            if get_occurrences(task, today, today)
+        ]
+        if not due_task_ids:
+            return
+
+        result = await db.execute(
+            select(TaskEvent.task_id).where(
+                TaskEvent.occurrence_date == today,
+                TaskEvent.task_id.in_(due_task_ids),
+                TaskEvent.status == EventStatus.done,
+            )
+        )
+        done_ids = {row.task_id for row in result}
+
+        if set(due_task_ids) <= done_ids:
+            await send_push_notification(
+                db,
+                member_id,
+                {
+                    "title": "HomeTask — отличная работа!",
+                    "body": "Все задачи на сегодня выполнены 🎉",
+                    "data": {"url": "/"},
+                },
+            )

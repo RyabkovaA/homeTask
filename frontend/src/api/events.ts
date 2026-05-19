@@ -12,6 +12,12 @@ interface EventCreate {
   note?: string | null
 }
 
+interface EventPatch {
+  status: EventStatus
+  moved_to?: string | null
+  note?: string | null
+}
+
 interface EventListFilters {
   fromDate?: string
   toDate?: string
@@ -33,7 +39,8 @@ export const eventsApi = {
   createDirect: (data: EventCreate) =>
     client.post<TaskEvent>('/events', data).then(r => r.data),
 
-  // Offline-aware create: tries network first, queues in IndexedDB if offline
+  // Offline-aware create: tries network first, queues in IndexedDB if offline.
+  // On 409 (event already exists for this occurrence) automatically PATCHes instead.
   create: async (data: EventCreate): Promise<TaskEvent | null> => {
     if (!navigator.onLine) {
       await enqueueEvent({ localId: crypto.randomUUID(), payload: data })
@@ -43,6 +50,14 @@ export const eventsApi = {
     try {
       return await client.post<TaskEvent>('/events', data).then(r => r.data)
     } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response?.status === 409) {
+        // Event already exists — update it instead
+        return eventsApi.update(data.task_id, data.occurrence_date, {
+          status: data.status,
+          moved_to: data.moved_to,
+          note: data.note,
+        })
+      }
       const isNetworkError =
         axios.isAxiosError(err) && !err.response && (
           err.code === 'ERR_NETWORK' ||
@@ -57,4 +72,7 @@ export const eventsApi = {
       throw err
     }
   },
+
+  update: (taskId: string, occurrenceDate: string, data: EventPatch): Promise<TaskEvent> =>
+    client.patch<TaskEvent>(`/events/${taskId}/${occurrenceDate}`, data).then(r => r.data),
 }

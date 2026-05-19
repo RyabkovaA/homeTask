@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Check, X, ArrowRight } from 'lucide-react'
+import { Check, X, ArrowRight, Lightbulb } from 'lucide-react'
 import type { Task, Room, EventStatus } from '../types'
 import { Badge } from './ui/Badge'
+import { Spinner } from './ui/Spinner'
 
 const PRIORITY_COLORS: Record<string, string> = {
   high: '#4A7C59',
@@ -29,6 +30,10 @@ interface TaskCardProps {
   existingStatus?: EventStatus
   onAction: (payload: TaskActionPayload) => void
   loading?: boolean
+  onGetAdvice?: () => void
+  adviceOpen?: boolean
+  adviceLoading?: boolean
+  advicePanel?: React.ReactNode
 }
 
 function getTomorrow() {
@@ -37,7 +42,7 @@ function getTomorrow() {
   return d.toISOString().slice(0, 10)
 }
 
-export function TaskCard({ task, room, existingStatus, onAction, loading }: TaskCardProps) {
+export function TaskCard({ task, room, existingStatus, onAction, loading, onGetAdvice, adviceOpen, adviceLoading, advicePanel }: TaskCardProps) {
   const [showMoveForm, setShowMoveForm] = useState(false)
   const [moveDate, setMoveDate] = useState(getTomorrow())
 
@@ -77,6 +82,19 @@ export function TaskCard({ task, room, existingStatus, onAction, loading }: Task
 
           {!isDone && !isSkipped && !isMoved && (
             <div className="flex items-center gap-1 flex-shrink-0">
+              {onGetAdvice && (
+                <button
+                  onClick={onGetAdvice}
+                  disabled={adviceLoading}
+                  title="Получить совет из базы знаний"
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50 ${
+                    adviceOpen ? 'bg-forest-200 text-forest-700' : 'bg-beige-100 hover:bg-forest-100 text-neutral-400 hover:text-forest-600'
+                  }`}
+                >
+                  {adviceLoading ? <Spinner className="w-3.5 h-3.5" /> : <Lightbulb size={14} />}
+                </button>
+              )}
+
               <button
                 onClick={() => onAction({ status: 'done' })}
                 disabled={loading}
@@ -116,6 +134,8 @@ export function TaskCard({ task, room, existingStatus, onAction, loading }: Task
             <span className="text-xs text-amber-600 font-medium flex-shrink-0">Перенесено</span>
           )}
         </div>
+
+        {advicePanel}
 
         {showMoveForm && !isDone && !isSkipped && !isMoved && (
           <div className="mt-3 pt-3 border-t border-beige-200 animate-fade-in">

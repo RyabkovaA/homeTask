@@ -197,7 +197,7 @@ async def get_nudge(
         if t.assignee_id and t.assignee_id != member.id:
             continue  # skip tasks assigned to others
         occ = build_occurrences(t, [e for e in events if e.task_id == t.id], today, today, now=today)
-        if occ and occ[0].status in (OccurrenceStatus.pending, OccurrenceStatus.overdue):
+        if occ and occ[0].status in (OccurrenceStatus.active, OccurrenceStatus.overdue):
             due_today += 1
 
     # Best weekdays from member history
@@ -221,14 +221,22 @@ async def get_nudge(
     today_dow = today.weekday()
     is_good_day = today_dow in best_dows
 
+    def _task_form(n: int) -> str:
+        if 11 <= (n % 100) <= 14:
+            return f"{n} невыполненных задач"
+        r = n % 10
+        if r == 1:
+            return f"{n} невыполненная задача"
+        if 2 <= r <= 4:
+            return f"{n} невыполненные задачи"
+        return f"{n} невыполненных задач"
+
     # Build nudge
     should_nudge = due_today > 0
     if due_today == 0:
         message = "Все задачи на сегодня выполнены. Отличная работа!"
-    elif due_today == 1:
-        message = "У вас 1 невыполненная задача на сегодня."
     else:
-        message = f"У вас {due_today} невыполненных задач на сегодня."
+        message = f"У вас {_task_form(due_today)} на сегодня."
 
     if should_nudge and is_good_day:
         message += " Сегодня ваш продуктивный день — отличное время их сделать!"

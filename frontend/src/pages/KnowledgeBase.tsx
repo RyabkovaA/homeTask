@@ -19,10 +19,10 @@ const SEASON_TABS: { value: SeasonFilter; label: string; emoji: string }[] = [
 const CATEGORY_CHIPS: { value: CategoryFilter; label: string; icon?: string }[] = [
   { value: 'all',        label: 'Все' },
   { value: 'regular',    label: 'Регулярный' },
-  { value: 'deep',       label: 'Глубокая уборка' },
+  { value: 'deep',       label: 'Генеральная уборка' },
   { value: 'prevention', label: 'Профилактика' },
   { value: 'storage',    label: 'Хранение' },
-  { value: 'nonobvious', label: 'Неочевидные', icon: '💡' },
+  { value: 'nonobvious', label: 'Необычные' },
 ]
 
 const SEASON_BADGE: Record<string, { label: string; cls: string }> = {

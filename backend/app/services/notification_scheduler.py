@@ -87,7 +87,10 @@ async def _process_task(
         is_overdue = occ_date < today
 
         if is_today:
-            title = "HomeTask — задача на сегодня"
+            if task.priority == "high":
+                title = "HomeTask — важная задача на сегодня ⚡"
+            else:
+                title = "HomeTask — задача на сегодня"
             body = f"Напоминание: {task.title}"
         elif is_overdue:
             days_late = (today - occ_date).days

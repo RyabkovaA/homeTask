@@ -14,6 +14,12 @@ class EventCreate(BaseModel):
     note: Optional[str] = None
 
 
+class EventPatch(BaseModel):
+    status: EventStatus
+    moved_to: Optional[date] = None
+    note: Optional[str] = None
+
+
 class EventOut(BaseModel):
     id: UUID
     task_id: UUID

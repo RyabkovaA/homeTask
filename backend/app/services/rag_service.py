@@ -397,17 +397,9 @@ def generate(
     top_score, top_doc = retrieved[0]
     top_advice = top_doc.advice
     main_advice = top_advice.content
+    # Only use steps from the primary matched source.
+    # Secondary source steps are irrelevant to the matched advice and produce incoherent output.
     steps = list(top_advice.steps or [])
-
-    # Only pull steps from secondary sources when the primary source has none.
-    # Mixing steps from unrelated advice produces incoherent output.
-    if not steps:
-        extra_steps_added = 0
-        for _, doc in retrieved[1:]:
-            for step in (doc.advice.steps or []):
-                if step not in steps and extra_steps_added < 4:
-                    steps.append(step)
-                    extra_steps_added += 1
 
     warnings = _priority_warning(task.priority, history)
     if top_score < min_score * 5:

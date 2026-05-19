@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from uuid import UUID
@@ -10,8 +10,9 @@ from app.models.task import Task
 from app.models.member import HouseMember, MemberRole
 from app.models.room import Room
 from app.models.user import User
-from app.schemas.task_event import EventCreate, EventOut, EventHistoryOut
+from app.schemas.task_event import EventCreate, EventOut, EventHistoryOut, EventPatch
 from app.api.v1.endpoints.auth import get_current_member, get_house_member
+from app.services import push_service
 
 router = APIRouter()
 
@@ -19,6 +20,7 @@ router = APIRouter()
 @router.post("/events", response_model=EventOut, status_code=201)
 async def create_event(
     payload: EventCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_member: HouseMember = Depends(get_current_member)
 ):
@@ -45,6 +47,58 @@ async def create_event(
     db.add(event)
     await db.commit()
     await db.refresh(event)
+
+    if payload.status == EventStatus.done:
+        background_tasks.add_task(
+            push_service.check_and_notify_all_done,
+            current_member.id,
+            current_member.house_id,
+        )
+
+    return event
+
+
+@router.patch("/events/{task_id}/{occurrence_date}", response_model=EventOut)
+async def update_event(
+    task_id: UUID,
+    occurrence_date: date,
+    payload: EventPatch,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_member: HouseMember = Depends(get_current_member),
+):
+    """Update status/moved_to of an existing event (e.g. re-do a skipped task)."""
+    task = await db.get(Task, task_id)
+    if not task or task.house_id != current_member.house_id:
+        raise HTTPException(403, "Task does not belong to your house")
+
+    result = await db.execute(
+        select(TaskEvent).where(
+            and_(
+                TaskEvent.task_id == task_id,
+                TaskEvent.occurrence_date == occurrence_date,
+            )
+        )
+    )
+    event = result.scalar_one_or_none()
+    if not event:
+        raise HTTPException(404, "Event not found")
+
+    event.status = payload.status
+    event.moved_to = payload.moved_to
+    if payload.note is not None:
+        event.note = payload.note
+    event.actor_id = current_member.id
+    await db.commit()
+    await db.refresh(event)
+
+    if payload.status == EventStatus.done:
+        background_tasks.add_task(
+            push_service.check_and_notify_all_done,
+            current_member.id,
+            current_member.house_id,
+        )
+
     return event
 
 

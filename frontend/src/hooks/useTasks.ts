@@ -8,7 +8,8 @@ export function useTasks() {
   return useQuery({
     queryKey: ['tasks', houseId],
     queryFn: () => tasksApi.list(houseId!),
-    enabled: !!houseId
+    enabled: !!houseId,
+    staleTime: 0,
   })
 }
 
@@ -17,7 +18,11 @@ export function useCreateTask() {
   const houseId = useAuthStore(s => s.houseId)
   return useMutation({
     mutationFn: (data: Partial<TaskFormData>) => tasksApi.create(houseId!, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks', houseId] })
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks', houseId] })
+      qc.invalidateQueries({ queryKey: ['events', houseId] })
+      qc.invalidateQueries({ queryKey: ['nudge', houseId] })
+    }
   })
 }
 
@@ -27,7 +32,10 @@ export function useUpdateTask() {
   return useMutation({
     mutationFn: ({ taskId, data }: { taskId: string; data: Partial<TaskFormData> }) =>
       tasksApi.update(taskId, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks', houseId] })
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks', houseId] })
+      qc.invalidateQueries({ queryKey: ['events', houseId] })
+    }
   })
 }
 
@@ -36,6 +44,9 @@ export function useDeleteTask() {
   const houseId = useAuthStore(s => s.houseId)
   return useMutation({
     mutationFn: (taskId: string) => tasksApi.delete(taskId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks', houseId] })
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks', houseId] })
+      qc.invalidateQueries({ queryKey: ['events', houseId] })
+    }
   })
 }

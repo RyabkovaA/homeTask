@@ -17,7 +17,7 @@ export function StatCard({ label, value, unit, icon, trend }: StatCardProps) {
             {unit && <span className="text-base text-neutral-500 ml-1">{unit}</span>}
           </p>
         </div>
-        {icon && <span className="text-3xl">{icon}</span>}
+        {icon && <span className="text-xl sm:text-3xl flex-shrink-0">{icon}</span>}
       </div>
       {trend !== undefined && (
         <p className={`text-xs mt-2 ${trend >= 0 ? 'text-forest-400' : 'text-red-500'}`}>
